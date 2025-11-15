@@ -1,7 +1,6 @@
 {
-  "buildCommand": "npm run type-check",
   "functions": {
-    "api/webhook.ts": {
+    "api/**/*.ts": {
       "memory": 256,
       "maxDuration": 10
     }

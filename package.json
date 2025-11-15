@@ -4,7 +4,7 @@
   "description": "> Forward messages from Telegram and automatically add them to your Attio CRM with just a few taps.",
   "type": "module",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc --noEmit",
     "type-check": "tsc --noEmit",
     "test": "echo \"Error: no test specified\" && exit 1"
   },

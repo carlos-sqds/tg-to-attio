@@ -190,20 +190,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
           return;
         }
 
-        // Other commands start a workflow
+        // Other commands - try to resume existing workflow, or start new one
         const event: TelegramEvent = {
           type: "command",
           command,
         };
 
-        await startWorkflowAndResume(userId, chatId, event);
-        logger.info("Started workflow with command", { userId, command });
+        try {
+          await telegramHook.resume(token, event);
+          logger.info("Resumed workflow with command", { userId, command });
+        } catch (error) {
+          await startWorkflowAndResume(userId, chatId, event);
+          logger.info("Started new workflow with command", { userId, command });
+        }
 
         res.status(200).send("OK");
         return;
       }
 
-      // Forwarded messages - start workflow if needed
+      // Forwarded messages - try to resume existing workflow, or start new one
       if (msg.forward_origin) {
         const forwardedMessage = extractForwardedMessage(msg);
         if (forwardedMessage) {
@@ -212,8 +217,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
             forwardedMessage,
           };
 
-          await startWorkflowAndResume(userId, chatId, event);
-          logger.info("Started workflow with forwarded message", { userId });
+          try {
+            // Try to resume existing workflow first
+            await telegramHook.resume(token, event);
+            logger.info("Resumed workflow with forwarded message", { userId });
+          } catch (error) {
+            // No workflow running, start one
+            await startWorkflowAndResume(userId, chatId, event);
+            logger.info("Started new workflow with forwarded message", { userId });
+          }
         }
 
         res.status(200).send("OK");

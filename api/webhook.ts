@@ -1,9 +1,12 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { start, getRun } from "workflow/api";
+import { start } from "workflow/api";
 import { logger } from "../src/lib/logger.js";
 import { telegramHook, type TelegramEvent } from "../src/workflows/hooks.js";
 import { conversationWorkflow } from "../src/workflows/conversation.js";
 import type { ForwardedMessageData } from "../src/types/index.js";
+
+const BOT_TOKEN = process.env.BOT_TOKEN!;
+const TELEGRAM_API = `https://api.telegram.org/bot${BOT_TOKEN}`;
 
 interface TelegramUpdate {
   update_id: number;
@@ -34,7 +37,13 @@ interface TelegramCallbackQuery {
   data?: string;
 }
 
-const activeWorkflows = new Map<number, string>();
+async function sendTelegramMessage(chatId: number, text: string): Promise<void> {
+  await fetch(`${TELEGRAM_API}/sendMessage`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ chat_id: chatId, text }),
+  });
+}
 
 function extractForwardedMessage(message: TelegramMessage): ForwardedMessageData | null {
   if (!message.forward_origin) return null;
@@ -89,14 +98,33 @@ function extractForwardedMessage(message: TelegramMessage): ForwardedMessageData
   };
 }
 
-async function ensureWorkflowRunning(userId: number, chatId: number): Promise<void> {
-  const token = `user-${userId}`;
+const WELCOME_MESSAGE = `👋 Welcome to the Attio CRM Bot!
 
-  if (!activeWorkflows.has(userId)) {
-    const run = await start(conversationWorkflow, [userId, chatId]);
-    activeWorkflows.set(userId, run.runId);
-    logger.info("Started new workflow", { userId, runId: run.runId });
-  }
+📋 How it works:
+
+1️⃣ Forward me messages from your customer conversations
+2️⃣ When you're done forwarding, send /done
+3️⃣ Select which company they belong to
+4️⃣ All messages will be added to that company in Attio
+
+Commands:
+/done - Process queued messages
+/clear - Clear message queue
+/cancel - Cancel current operation
+/help - Show this help message`;
+
+async function startWorkflowAndResume(userId: number, chatId: number, event: TelegramEvent): Promise<void> {
+  const token = `user-${userId}`;
+  
+  // Start workflow - it will create the hook and wait for events
+  const run = await start(conversationWorkflow, [userId, chatId]);
+  logger.info("Started workflow", { userId, runId: run.runId });
+  
+  // Give the workflow time to initialize and create the hook
+  await new Promise(resolve => setTimeout(resolve, 100));
+  
+  // Now resume with the event
+  await telegramHook.resume(token, event);
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
@@ -108,7 +136,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
   try {
     const update = req.body as TelegramUpdate;
 
-    // Handle callback queries
+    // Handle callback queries - these always go to the workflow
     if (update.callback_query) {
       const cq = update.callback_query;
       if (!cq.message) {
@@ -120,16 +148,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
       const chatId = cq.message.chat.id;
       const token = `user-${userId}`;
 
-      await ensureWorkflowRunning(userId, chatId);
-
       const event: TelegramEvent = {
         type: "callback_query",
         callbackData: cq.data || "",
         callbackQueryId: cq.id,
       };
 
-      await telegramHook.resume(token, event);
-      logger.info("Resumed workflow with callback", { userId, data: cq.data });
+      try {
+        await telegramHook.resume(token, event);
+        logger.info("Resumed workflow with callback", { userId, data: cq.data });
+      } catch (error) {
+        logger.error("Failed to resume workflow", { userId, error });
+      }
 
       res.status(200).send("OK");
       return;
@@ -148,25 +178,32 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
       const text = msg.text || "";
       const token = `user-${userId}`;
 
-      await ensureWorkflowRunning(userId, chatId);
-
       // Commands
       if (text.startsWith("/")) {
         const command = text.split(" ")[0].toLowerCase();
 
+        // Handle /start and /help directly (no workflow needed)
+        if (command === "/start" || command === "/help") {
+          await sendTelegramMessage(chatId, WELCOME_MESSAGE);
+          logger.info("Sent welcome message", { userId, command });
+          res.status(200).send("OK");
+          return;
+        }
+
+        // Other commands start a workflow
         const event: TelegramEvent = {
           type: "command",
           command,
         };
 
-        await telegramHook.resume(token, event);
-        logger.info("Resumed workflow with command", { userId, command });
+        await startWorkflowAndResume(userId, chatId, event);
+        logger.info("Started workflow with command", { userId, command });
 
         res.status(200).send("OK");
         return;
       }
 
-      // Forwarded messages
+      // Forwarded messages - start workflow if needed
       if (msg.forward_origin) {
         const forwardedMessage = extractForwardedMessage(msg);
         if (forwardedMessage) {
@@ -175,23 +212,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
             forwardedMessage,
           };
 
-          await telegramHook.resume(token, event);
-          logger.info("Resumed workflow with forwarded message", { userId });
+          await startWorkflowAndResume(userId, chatId, event);
+          logger.info("Started workflow with forwarded message", { userId });
         }
 
         res.status(200).send("OK");
         return;
       }
 
-      // Regular text messages
+      // Regular text messages - try to resume existing workflow
       if (text && !text.startsWith("/")) {
         const event: TelegramEvent = {
           type: "text_message",
           text,
         };
 
-        await telegramHook.resume(token, event);
-        logger.info("Resumed workflow with text message", { userId });
+        try {
+          await telegramHook.resume(token, event);
+          logger.info("Resumed workflow with text message", { userId });
+        } catch (error) {
+          // No workflow running, start one
+          await startWorkflowAndResume(userId, chatId, event);
+          logger.info("Started workflow with text message", { userId });
+        }
 
         res.status(200).send("OK");
         return;

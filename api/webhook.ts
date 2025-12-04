@@ -1,3 +1,4 @@
+import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { telegramHook, conversationWorkflow } from "../src/workflows/conversation.js";
 import { logger } from "../src/lib/logger.js";
 import type { TelegramEvent, ForwardedMessageData } from "../src/types/index.js";
@@ -164,19 +165,21 @@ async function ensureWorkflowStarted(userId: number, chatId: number): Promise<vo
   }
 }
 
-export default async function handler(req: Request): Promise<Response> {
+export default async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
   if (req.method !== "POST") {
-    return new Response("Method not allowed", { status: 405 });
+    res.status(405).send("Method not allowed");
+    return;
   }
 
   try {
-    const update = await req.json() as TelegramUpdate;
+    const update = req.body as TelegramUpdate;
     logger.debug("Received update", { updateId: update.update_id });
 
     const event = parseUpdate(update);
     if (!event) {
       logger.debug("Ignoring update - could not parse");
-      return new Response("OK");
+      res.status(200).send("OK");
+      return;
     }
 
     // Ensure workflow exists for this user
@@ -185,9 +188,9 @@ export default async function handler(req: Request): Promise<Response> {
     // Resume workflow with the new event
     await telegramHook.resume(String(event.userId), event);
 
-    return new Response("OK");
+    res.status(200).send("OK");
   } catch (error) {
     logger.error("Webhook error", { error: error instanceof Error ? error.message : String(error) });
-    return new Response("OK"); // Always return OK to Telegram
+    res.status(200).send("OK"); // Always return OK to Telegram
   }
 }

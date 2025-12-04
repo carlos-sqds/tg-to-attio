@@ -16,10 +16,8 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@grammyjs/conversations": "^2.1.0",
-    "@upstash/redis": "^1.35.6",
     "dotenv": "^17.2.3",
-    "grammy": "^1.38.3"
+    "workflow": "^4.0.1-beta.26"
   },
   "devDependencies": {
     "@types/node": "^24.10.1",

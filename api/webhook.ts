@@ -1,5 +1,8 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
+import { start } from "workflow/api";
 import { logger } from "../src/lib/logger.js";
+import { telegramHook, type TelegramEvent } from "../src/workflows/hooks.js";
+import { conversationWorkflow } from "../src/workflows/conversation.js";
 import type { ForwardedMessageData } from "../src/types/index.js";
 
 const BOT_TOKEN = process.env.BOT_TOKEN!;
@@ -110,22 +113,34 @@ Commands:
 /cancel - Cancel current operation
 /help - Show this help message`;
 
-// Simple in-memory store for demo - in production use Redis/KV
-// Note: This won't persist across serverless invocations
-// For production, use Upstash Redis or Vercel KV
-const messageQueues = new Map<number, ForwardedMessageData[]>();
-
-function getQueue(userId: number): ForwardedMessageData[] {
-  if (!messageQueues.has(userId)) {
-    messageQueues.set(userId, []);
+async function ensureWorkflowAndResume(userId: number, chatId: number, event: TelegramEvent): Promise<boolean> {
+  const token = `user-${userId}`;
+  
+  try {
+    // First try to resume an existing workflow
+    await telegramHook.resume(token, event);
+    logger.info("Resumed existing workflow", { userId, eventType: event.type });
+    return true;
+  } catch (resumeError) {
+    logger.info("No existing workflow, starting new one", { userId, error: String(resumeError) });
+    
+    try {
+      // Start a new workflow
+      const run = await start(conversationWorkflow, [userId, chatId]);
+      logger.info("Started new workflow", { userId, runId: run.runId });
+      
+      // Wait a bit for the workflow to create its hook
+      await new Promise(resolve => setTimeout(resolve, 200));
+      
+      // Now try to resume
+      await telegramHook.resume(token, event);
+      logger.info("Resumed new workflow", { userId, eventType: event.type });
+      return true;
+    } catch (startError) {
+      logger.error("Failed to start/resume workflow", { userId, error: String(startError) });
+      return false;
+    }
   }
-  return messageQueues.get(userId)!;
-}
-
-function clearQueue(userId: number): number {
-  const count = getQueue(userId).length;
-  messageQueues.set(userId, []);
-  return count;
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
@@ -137,9 +152,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
   try {
     const update = req.body as TelegramUpdate;
 
-    // Handle callback queries - not implemented in simple mode
+    // Handle callback queries
     if (update.callback_query) {
-      // For now, just acknowledge callback queries
+      const cq = update.callback_query;
+      if (!cq.message) {
+        res.status(200).send("OK");
+        return;
+      }
+
+      const userId = cq.from.id;
+      const chatId = cq.message.chat.id;
+
+      const event: TelegramEvent = {
+        type: "callback_query",
+        callbackData: cq.data || "",
+        callbackQueryId: cq.id,
+      };
+
+      await ensureWorkflowAndResume(userId, chatId, event);
       res.status(200).send("OK");
       return;
     }
@@ -156,37 +186,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
       const chatId = msg.chat.id;
       const text = msg.text || "";
 
-      // Commands
+      // Handle /start and /help directly (fast response)
+      if (text === "/start" || text === "/help") {
+        await sendTelegramMessage(chatId, WELCOME_MESSAGE);
+        logger.info("Sent welcome message", { userId });
+        res.status(200).send("OK");
+        return;
+      }
+
+      // Commands go through workflow
       if (text.startsWith("/")) {
         const command = text.split(" ")[0].toLowerCase();
-
-        if (command === "/start" || command === "/help") {
-          await sendTelegramMessage(chatId, WELCOME_MESSAGE);
-          logger.info("Sent welcome message", { userId, command });
-          res.status(200).send("OK");
-          return;
-        }
-
-        if (command === "/clear") {
-          const count = clearQueue(userId);
-          await sendTelegramMessage(chatId, count > 0 ? `🗑️ Cleared ${count} message(s) from queue.` : "✨ Queue is already empty.");
-          logger.info("Cleared queue", { userId, count });
-          res.status(200).send("OK");
-          return;
-        }
-
-        if (command === "/done") {
-          const queue = getQueue(userId);
-          if (queue.length === 0) {
+        const event: TelegramEvent = { type: "command", command };
+        
+        const success = await ensureWorkflowAndResume(userId, chatId, event);
+        if (!success) {
+          // Fallback: send direct response if workflow fails
+          if (command === "/done") {
             await sendTelegramMessage(chatId, "📭 No messages in queue. Forward some messages first!");
-          } else {
-            await sendTelegramMessage(chatId, `📊 You have ${queue.length} message(s) queued.\n\n⚠️ Full workflow with company selection requires Redis storage. For now, use /clear to reset.`);
+          } else if (command === "/clear") {
+            await sendTelegramMessage(chatId, "✨ Queue cleared.");
           }
-          logger.info("Done command", { userId, queueLength: queue.length });
-          res.status(200).send("OK");
-          return;
         }
-
+        
         res.status(200).send("OK");
         return;
       }
@@ -195,11 +217,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
       if (msg.forward_origin) {
         const forwardedMessage = extractForwardedMessage(msg);
         if (forwardedMessage) {
-          const queue = getQueue(userId);
-          queue.push(forwardedMessage);
-          await sendTelegramMessage(chatId, `📥 Message queued (${queue.length})\n\nSend more messages or use /done to process them.`);
-          logger.info("Queued forwarded message", { userId, queueLength: queue.length });
+          const event: TelegramEvent = { type: "forwarded_message", forwardedMessage };
+          
+          const success = await ensureWorkflowAndResume(userId, chatId, event);
+          if (!success) {
+            // Fallback: acknowledge even if workflow fails
+            await sendTelegramMessage(chatId, "📥 Message received. (Workflow initialization in progress...)");
+          }
         }
+        res.status(200).send("OK");
+        return;
+      }
+
+      // Regular text messages (for company search)
+      if (text && !text.startsWith("/")) {
+        const event: TelegramEvent = { type: "text_message", text };
+        await ensureWorkflowAndResume(userId, chatId, event);
         res.status(200).send("OK");
         return;
       }

@@ -1,6 +1,5 @@
-import { config } from "../lib/config.js";
-import { logger } from "../lib/logger.js";
-import type { CompanySearchResult, RecentCompany } from "../types/index.js";
+import { config } from "../../lib/config.js";
+import { logger } from "../../lib/logger.js";
 
 const TELEGRAM_API_BASE = `https://api.telegram.org/bot${config.botToken}`;
 
@@ -44,7 +43,7 @@ async function telegramRequest<T>(method: string, body: Record<string, unknown>)
   return response.json() as Promise<T>;
 }
 
-export async function sendMessageStep(options: SendMessageOptions): Promise<number> {
+export async function sendMessage(options: SendMessageOptions): Promise<number> {
   "use step";
 
   const body: Record<string, unknown> = {
@@ -64,7 +63,7 @@ export async function sendMessageStep(options: SendMessageOptions): Promise<numb
   return result.result.message_id;
 }
 
-export async function editMessageStep(options: EditMessageOptions): Promise<void> {
+export async function editMessage(options: EditMessageOptions): Promise<void> {
   "use step";
 
   const body: Record<string, unknown> = {
@@ -84,33 +83,41 @@ export async function editMessageStep(options: EditMessageOptions): Promise<void
   await telegramRequest("editMessageText", body);
 }
 
-export async function answerCallbackQueryStep(callbackQueryId: string): Promise<void> {
+export async function answerCallbackQuery(callbackQueryId: string): Promise<void> {
   "use step";
   await telegramRequest("answerCallbackQuery", { callback_query_id: callbackQueryId });
 }
 
 export function buildCompanySelectionKeyboard(
-  recentCompanies: RecentCompany[],
-  searchResults?: CompanySearchResult[]
+  recentCompanies: Array<{ id: string; name: string }>
 ): InlineKeyboardButton[][] {
   const keyboard: InlineKeyboardButton[][] = [];
 
-  const companies = searchResults || recentCompanies.map(c => ({ id: c.id, name: c.name }));
-  
-  if (companies.length > 0) {
-    const displayCompanies = companies.slice(0, 5);
-    for (const company of displayCompanies) {
+  if (recentCompanies.length > 0) {
+    for (const company of recentCompanies.slice(0, 5)) {
       keyboard.push([{ text: `🏢 ${company.name}`, callback_data: `select:${company.id}` }]);
     }
   }
 
-  if (!searchResults) {
-    keyboard.push([{ text: "🔍 Search company", callback_data: "search" }]);
+  keyboard.push([{ text: "🔍 Search company", callback_data: "search" }]);
+  keyboard.push([{ text: "❌ Cancel", callback_data: "cancel" }]);
+
+  return keyboard;
+}
+
+export function buildSearchResultsKeyboard(
+  companies: Array<{ id: string; name: string; location?: string }>
+): InlineKeyboardButton[][] {
+  const keyboard: InlineKeyboardButton[][] = [];
+
+  for (const company of companies.slice(0, 5)) {
+    const label = company.location ? `${company.name} - ${company.location}` : company.name;
+    keyboard.push([{ text: label, callback_data: `select:${company.id}` }]);
   }
-  
+
   keyboard.push([
-    { text: "← Back", callback_data: "back" },
-    { text: "❌ Cancel", callback_data: "cancel" }
+    { text: "🔍 Search again", callback_data: "search" },
+    { text: "❌ Cancel", callback_data: "cancel" },
   ]);
 
   return keyboard;
@@ -121,7 +128,7 @@ export function buildConfirmationKeyboard(): InlineKeyboardButton[][] {
     [
       { text: "✓ Confirm", callback_data: "confirm" },
       { text: "← Back", callback_data: "back" },
-      { text: "❌ Cancel", callback_data: "cancel" }
-    ]
+      { text: "❌ Cancel", callback_data: "cancel" },
+    ],
   ];
 }

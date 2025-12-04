@@ -1,12 +1,12 @@
-import { config } from "../lib/config.js";
-import { logger } from "../lib/logger.js";
+import { config } from "../../lib/config.js";
+import { logger } from "../../lib/logger.js";
 import type {
   AttioCompany,
   AttioNote,
   CreateNoteInput,
   SearchCompaniesInput,
   CompanySearchResult,
-} from "../services/attio/types.js";
+} from "../../services/attio/types.js";
 
 const ATTIO_BASE_URL = "https://api.attio.com/v2";
 
@@ -15,9 +15,9 @@ async function attioRequest<T>(
   options: RequestInit = {}
 ): Promise<T> {
   const url = `${ATTIO_BASE_URL}${endpoint}`;
-  
+
   const headers = {
-    "Authorization": `Bearer ${config.attioApiKey}`,
+    Authorization: `Bearer ${config.attioApiKey}`,
     "Content-Type": "application/json",
     ...options.headers,
   };
@@ -40,7 +40,7 @@ async function attioRequest<T>(
   return response.json() as Promise<T>;
 }
 
-export async function searchCompaniesStep(query: string): Promise<CompanySearchResult[]> {
+export async function searchCompanies(query: string): Promise<CompanySearchResult[]> {
   "use step";
 
   const searchInput: SearchCompaniesInput = {
@@ -64,7 +64,7 @@ export async function searchCompaniesStep(query: string): Promise<CompanySearchR
 
   const results: CompanySearchResult[] = response.data.map((company) => {
     const name = company.values.name?.[0]?.value || "Unnamed Company";
-    
+
     let location: string | undefined;
     const locationData = company.values.locations?.[0];
     if (locationData) {
@@ -87,7 +87,7 @@ export async function searchCompaniesStep(query: string): Promise<CompanySearchR
   return results;
 }
 
-export async function createNoteStep(input: CreateNoteInput): Promise<AttioNote> {
+export async function createNote(input: CreateNoteInput): Promise<AttioNote> {
   "use step";
 
   logger.info("Creating note", {

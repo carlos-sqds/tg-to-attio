@@ -1,7 +1,9 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { telegramHook, conversationWorkflow } from "../src/workflows/conversation.js";
+import { start, getRun } from "workflow/api";
 import { logger } from "../src/lib/logger.js";
-import type { TelegramEvent, ForwardedMessageData } from "../src/types/index.js";
+import { telegramHook, type TelegramEvent } from "../src/workflows/hooks.js";
+import { conversationWorkflow } from "../src/workflows/conversation.js";
+import type { ForwardedMessageData } from "../src/types/index.js";
 
 interface TelegramUpdate {
   update_id: number;
@@ -32,71 +34,9 @@ interface TelegramCallbackQuery {
   data?: string;
 }
 
-function parseUpdate(update: TelegramUpdate): TelegramEvent | null {
-  // Handle callback queries
-  if (update.callback_query) {
-    const cq = update.callback_query;
-    if (!cq.message) return null;
+const activeWorkflows = new Map<number, string>();
 
-    return {
-      type: "callback_query",
-      userId: cq.from.id,
-      chatId: cq.message.chat.id,
-      messageId: cq.message.message_id,
-      callbackData: cq.data,
-    };
-  }
-
-  // Handle messages
-  if (update.message) {
-    const msg = update.message;
-    const userId = msg.from?.id;
-    if (!userId) return null;
-
-    const chatId = msg.chat.id;
-    const text = msg.text || "";
-
-    // Commands
-    if (text.startsWith("/")) {
-      return {
-        type: "command",
-        userId,
-        chatId,
-        messageId: msg.message_id,
-        command: text.split(" ")[0].toLowerCase(),
-      };
-    }
-
-    // Forwarded messages
-    if (msg.forward_origin) {
-      const forwardedData = extractForwardedMessageDataFromRaw(msg);
-      if (forwardedData) {
-        return {
-          type: "forwarded_message",
-          userId,
-          chatId,
-          messageId: msg.message_id,
-          forwardedMessage: forwardedData,
-        };
-      }
-    }
-
-    // Regular text messages
-    if (text) {
-      return {
-        type: "text_message",
-        userId,
-        chatId,
-        messageId: msg.message_id,
-        text,
-      };
-    }
-  }
-
-  return null;
-}
-
-function extractForwardedMessageDataFromRaw(message: TelegramMessage): ForwardedMessageData | null {
+function extractForwardedMessage(message: TelegramMessage): ForwardedMessageData | null {
   if (!message.forward_origin) return null;
 
   const origin = message.forward_origin as {
@@ -127,7 +67,7 @@ function extractForwardedMessageDataFromRaw(message: TelegramMessage): Forwarded
 
   const text = message.text || message.caption || "";
   const hasMedia = !!(message.photo || message.video || message.document || message.audio);
-  
+
   let mediaType: string | undefined;
   if (message.photo) mediaType = "photo";
   else if (message.video) mediaType = "video";
@@ -149,19 +89,13 @@ function extractForwardedMessageDataFromRaw(message: TelegramMessage): Forwarded
   };
 }
 
-// Track active workflows (in production, Workflow SDK handles this)
-const activeWorkflows = new Set<string>();
+async function ensureWorkflowRunning(userId: number, chatId: number): Promise<void> {
+  const token = `user-${userId}`;
 
-async function ensureWorkflowStarted(userId: number, chatId: number): Promise<void> {
-  const workflowId = `user:${userId}`;
-  
-  if (!activeWorkflows.has(workflowId)) {
-    activeWorkflows.add(workflowId);
-    // Start workflow in background - it will wait for events via hook
-    conversationWorkflow(String(userId), chatId).catch((error) => {
-      logger.error("Workflow error", { userId, error });
-      activeWorkflows.delete(workflowId);
-    });
+  if (!activeWorkflows.has(userId)) {
+    const run = await start(conversationWorkflow, [userId, chatId]);
+    activeWorkflows.set(userId, run.runId);
+    logger.info("Started new workflow", { userId, runId: run.runId });
   }
 }
 
@@ -173,24 +107,100 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
 
   try {
     const update = req.body as TelegramUpdate;
-    logger.debug("Received update", { updateId: update.update_id });
 
-    const event = parseUpdate(update);
-    if (!event) {
-      logger.debug("Ignoring update - could not parse");
+    // Handle callback queries
+    if (update.callback_query) {
+      const cq = update.callback_query;
+      if (!cq.message) {
+        res.status(200).send("OK");
+        return;
+      }
+
+      const userId = cq.from.id;
+      const chatId = cq.message.chat.id;
+      const token = `user-${userId}`;
+
+      await ensureWorkflowRunning(userId, chatId);
+
+      const event: TelegramEvent = {
+        type: "callback_query",
+        callbackData: cq.data || "",
+        callbackQueryId: cq.id,
+      };
+
+      await telegramHook.resume(token, event);
+      logger.info("Resumed workflow with callback", { userId, data: cq.data });
+
       res.status(200).send("OK");
       return;
     }
 
-    // Ensure workflow exists for this user
-    await ensureWorkflowStarted(event.userId, event.chatId);
+    // Handle messages
+    if (update.message) {
+      const msg = update.message;
+      const userId = msg.from?.id;
+      if (!userId) {
+        res.status(200).send("OK");
+        return;
+      }
 
-    // Resume workflow with the new event
-    await telegramHook.resume(String(event.userId), event);
+      const chatId = msg.chat.id;
+      const text = msg.text || "";
+      const token = `user-${userId}`;
+
+      await ensureWorkflowRunning(userId, chatId);
+
+      // Commands
+      if (text.startsWith("/")) {
+        const command = text.split(" ")[0].toLowerCase();
+
+        const event: TelegramEvent = {
+          type: "command",
+          command,
+        };
+
+        await telegramHook.resume(token, event);
+        logger.info("Resumed workflow with command", { userId, command });
+
+        res.status(200).send("OK");
+        return;
+      }
+
+      // Forwarded messages
+      if (msg.forward_origin) {
+        const forwardedMessage = extractForwardedMessage(msg);
+        if (forwardedMessage) {
+          const event: TelegramEvent = {
+            type: "forwarded_message",
+            forwardedMessage,
+          };
+
+          await telegramHook.resume(token, event);
+          logger.info("Resumed workflow with forwarded message", { userId });
+        }
+
+        res.status(200).send("OK");
+        return;
+      }
+
+      // Regular text messages
+      if (text && !text.startsWith("/")) {
+        const event: TelegramEvent = {
+          type: "text_message",
+          text,
+        };
+
+        await telegramHook.resume(token, event);
+        logger.info("Resumed workflow with text message", { userId });
+
+        res.status(200).send("OK");
+        return;
+      }
+    }
 
     res.status(200).send("OK");
   } catch (error) {
     logger.error("Webhook error", { error: error instanceof Error ? error.message : String(error) });
-    res.status(200).send("OK"); // Always return OK to Telegram
+    res.status(200).send("OK");
   }
 }

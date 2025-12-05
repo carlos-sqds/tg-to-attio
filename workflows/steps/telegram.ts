@@ -322,6 +322,17 @@ export function formatSuggestedAction(action: {
       displayValue = String(value);
     }
 
+    // Format ISO dates as readable dates
+    if ((key === "deadline_at" || key === "deadline" || key === "date") && displayValue.match(/^\d{4}-\d{2}-\d{2}T/)) {
+      const date = new Date(displayValue);
+      displayValue = date.toLocaleDateString("en-US", { 
+        weekday: "short", 
+        month: "short", 
+        day: "numeric",
+        year: date.getFullYear() !== new Date().getFullYear() ? "numeric" : undefined
+      });
+    }
+
     if (displayValue && displayValue !== "undefined" && displayValue !== "null") {
       fields.push({ key, label: config.label, value: displayValue, priority: config.priority });
     }

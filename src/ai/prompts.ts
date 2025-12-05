@@ -63,8 +63,8 @@ Analyze the provided messages and instruction to:
 - For "create_company": Extract company name, domain, location
 - For "create_deal": Extract deal name, value, associated company/person
 - For "create_task": Use these exact field names:
-  - content: The task description
-  - deadline_at: Due date in ISO format (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SSZ)
+  - content: The task description (required)
+  - deadline_at: Pass the deadline EXACTLY as mentioned (e.g., "next wednesday", "tomorrow", "2025-12-15"). Do NOT compute dates - just pass the exact text.
   - assignee_email: Email of person to assign
 - For "add_to_list": Identify which list and which record
 - For "add_note": Identify the parent record (company/person)

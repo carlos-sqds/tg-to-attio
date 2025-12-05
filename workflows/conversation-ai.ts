@@ -127,6 +127,7 @@ Commands:
                 noteTitle: currentAction.noteTitle,
                 targetObject: currentAction.targetObject,
                 targetList: currentAction.targetList,
+                prerequisiteActions: currentAction.prerequisiteActions,
               },
               formatted.content
             );

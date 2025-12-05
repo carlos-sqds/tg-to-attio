@@ -1,5 +1,5 @@
-import { config } from "../../lib/config.js";
-import { logger } from "../../lib/logger.js";
+import { config } from "@/src/lib/config";
+import { logger } from "@/src/lib/logger";
 
 const TELEGRAM_API_BASE = `https://api.telegram.org/bot${config.botToken}`;
 

@@ -1,5 +1,5 @@
 import { defineHook } from "workflow";
-import type { ForwardedMessageData } from "../types/index.js";
+import type { ForwardedMessageData } from "@/src/types";
 
 export interface TelegramMessageEvent {
   type: "command" | "forwarded_message" | "text_message";

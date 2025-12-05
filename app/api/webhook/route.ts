@@ -1,9 +1,9 @@
-import type { VercelRequest, VercelResponse } from "@vercel/node";
+import { NextRequest, NextResponse } from "next/server";
 import { start } from "workflow/api";
-import { logger } from "../src/lib/logger.js";
-import { telegramHook, type TelegramEvent } from "../src/workflows/hooks.js";
-import { conversationWorkflow } from "../src/workflows/conversation.js";
-import type { ForwardedMessageData } from "../src/types/index.js";
+import { logger } from "@/src/lib/logger";
+import { telegramHook, type TelegramEvent } from "@/workflows/hooks";
+import { conversationWorkflow } from "@/workflows/conversation";
+import type { ForwardedMessageData } from "@/src/types";
 
 const BOT_TOKEN = process.env.BOT_TOKEN!;
 const TELEGRAM_API = `https://api.telegram.org/bot${BOT_TOKEN}`;
@@ -143,21 +143,15 @@ async function ensureWorkflowAndResume(userId: number, chatId: number, event: Te
   }
 }
 
-export default async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
-  if (req.method !== "POST") {
-    res.status(405).send("Method not allowed");
-    return;
-  }
-
+export async function POST(request: NextRequest) {
   try {
-    const update = req.body as TelegramUpdate;
+    const update = await request.json() as TelegramUpdate;
 
     // Handle callback queries
     if (update.callback_query) {
       const cq = update.callback_query;
       if (!cq.message) {
-        res.status(200).send("OK");
-        return;
+        return NextResponse.json({ ok: true });
       }
 
       const userId = cq.from.id;
@@ -170,8 +164,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
       };
 
       await ensureWorkflowAndResume(userId, chatId, event);
-      res.status(200).send("OK");
-      return;
+      return NextResponse.json({ ok: true });
     }
 
     // Handle messages
@@ -179,8 +172,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
       const msg = update.message;
       const userId = msg.from?.id;
       if (!userId) {
-        res.status(200).send("OK");
-        return;
+        return NextResponse.json({ ok: true });
       }
 
       const chatId = msg.chat.id;
@@ -190,8 +182,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
       if (text === "/start" || text === "/help") {
         await sendTelegramMessage(chatId, WELCOME_MESSAGE);
         logger.info("Sent welcome message", { userId });
-        res.status(200).send("OK");
-        return;
+        return NextResponse.json({ ok: true });
       }
 
       // Commands go through workflow
@@ -201,7 +192,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
         
         const success = await ensureWorkflowAndResume(userId, chatId, event);
         if (!success) {
-          // Fallback: send direct response if workflow fails
           if (command === "/done") {
             await sendTelegramMessage(chatId, "📭 No messages in queue. Forward some messages first!");
           } else if (command === "/clear") {
@@ -209,8 +199,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
           }
         }
         
-        res.status(200).send("OK");
-        return;
+        return NextResponse.json({ ok: true });
       }
 
       // Forwarded messages
@@ -221,26 +210,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
           
           const success = await ensureWorkflowAndResume(userId, chatId, event);
           if (!success) {
-            // Fallback: acknowledge even if workflow fails
             await sendTelegramMessage(chatId, "📥 Message received. (Workflow initialization in progress...)");
           }
         }
-        res.status(200).send("OK");
-        return;
+        return NextResponse.json({ ok: true });
       }
 
       // Regular text messages (for company search)
       if (text && !text.startsWith("/")) {
         const event: TelegramEvent = { type: "text_message", text };
         await ensureWorkflowAndResume(userId, chatId, event);
-        res.status(200).send("OK");
-        return;
+        return NextResponse.json({ ok: true });
       }
     }
 
-    res.status(200).send("OK");
+    return NextResponse.json({ ok: true });
   } catch (error) {
     logger.error("Webhook error", { error: error instanceof Error ? error.message : String(error) });
-    res.status(200).send("OK");
+    return NextResponse.json({ ok: true });
   }
 }

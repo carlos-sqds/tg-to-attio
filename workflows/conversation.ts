@@ -1,6 +1,6 @@
-import { logger } from "../lib/logger.js";
-import type { ForwardedMessageData, RecentCompany, CompanySearchResult } from "../types/index.js";
-import { telegramHook, type TelegramEvent } from "./hooks.js";
+import { logger } from "@/src/lib/logger";
+import type { ForwardedMessageData, RecentCompany, CompanySearchResult } from "@/src/types";
+import { telegramHook, type TelegramEvent } from "./hooks";
 import {
   sendMessage,
   editMessage,
@@ -8,9 +8,9 @@ import {
   buildCompanySelectionKeyboard,
   buildSearchResultsKeyboard,
   buildConfirmationKeyboard,
-} from "./steps/telegram.js";
-import { searchCompanies, createNote } from "./steps/attio.js";
-import { formatMessagesForSingleNote } from "../services/attio/formatters.js";
+} from "./steps/telegram";
+import { searchCompanies, createNote } from "./steps/attio";
+import { formatMessagesForSingleNote } from "@/src/services/attio/formatters";
 
 type ConversationState =
   | "idle"

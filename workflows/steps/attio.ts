@@ -1,12 +1,12 @@
-import { config } from "../../lib/config.js";
-import { logger } from "../../lib/logger.js";
+import { config } from "@/src/lib/config";
+import { logger } from "@/src/lib/logger";
 import type {
   AttioCompany,
   AttioNote,
   CreateNoteInput,
   SearchCompaniesInput,
   CompanySearchResult,
-} from "../../services/attio/types.js";
+} from "@/src/services/attio/types";
 
 const ATTIO_BASE_URL = "https://api.attio.com/v2";
 

@@ -7,7 +7,7 @@ import {
 } from "@/src/services/attio/schema-types";
 import { buildSystemPrompt, buildUserPrompt } from "@/src/ai/prompts";
 
-const DEFAULT_MODEL = "anthropic/claude-opus-4.5";
+const DEFAULT_MODEL = "moonshotai/kimi-k2-thinking";
 
 /**
  * Workflow step for analyzing user intent

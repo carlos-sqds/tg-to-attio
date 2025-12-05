@@ -404,12 +404,18 @@ Commands:
           // Process with AI
           state = "processing_ai";
           
-          // React to user's message to show we're thinking
-          if (event.messageId) {
-            await setMessageReaction(chatId, event.messageId, "🤔");
-          }
+          // Always show visible feedback first
+          lastBotMessageId = await sendMessage({
+            chatId,
+            text: "🤖 Processing your request...",
+          });
 
           try {
+            // Reaction inside try (optional, can fail silently)
+            if (event.messageId) {
+              await setMessageReaction(chatId, event.messageId, "🤔");
+            }
+
             if (!schema) {
               schema = await fetchFullSchema();
             }
@@ -436,8 +442,10 @@ Commands:
             const suggestionText = formatSuggestedAction(currentAction);
             const hasClarifications = currentAction.clarificationsNeeded.length > 0;
 
-            lastBotMessageId = await sendMessage({
+            // Edit the processing message with the result
+            await editMessage({
               chatId,
+              messageId: lastBotMessageId,
               text: suggestionText,
               parseMode: "Markdown",
               replyMarkup: {
@@ -459,8 +467,10 @@ Commands:
             const errorMsg = error instanceof Error ? error.message : String(error);
             logger.error("AI analysis failed", { userId, error: errorMsg });
 
-            await sendMessage({
+            // Edit the processing message with error
+            await editMessage({
               chatId,
+              messageId: lastBotMessageId,
               text: `❌ AI analysis failed: ${errorMsg.substring(0, 200)}`,
             });
             state = "idle";
@@ -472,12 +482,18 @@ Commands:
         if (state === "awaiting_instruction") {
           state = "processing_ai";
           
-          // React to show we're thinking
-          if (event.messageId) {
-            await setMessageReaction(chatId, event.messageId, "🤔");
-          }
+          // Always show visible feedback first
+          lastBotMessageId = await sendMessage({
+            chatId,
+            text: "🤖 Processing your request...",
+          });
 
           try {
+            // Reaction inside try (optional, can fail silently)
+            if (event.messageId) {
+              await setMessageReaction(chatId, event.messageId, "🤔");
+            }
+
             if (!schema) {
               schema = await fetchFullSchema();
             }
@@ -504,8 +520,10 @@ Commands:
             const suggestionText = formatSuggestedAction(currentAction);
             const hasClarifications = currentAction.clarificationsNeeded.length > 0;
 
-            lastBotMessageId = await sendMessage({
+            // Edit the processing message with the result
+            await editMessage({
               chatId,
+              messageId: lastBotMessageId,
               text: suggestionText,
               parseMode: "Markdown",
               replyMarkup: {
@@ -519,8 +537,10 @@ Commands:
             }
             
             const errorMsg = error instanceof Error ? error.message : String(error);
-            await sendMessage({
+            // Edit the processing message with error
+            await editMessage({
               chatId,
+              messageId: lastBotMessageId,
               text: `❌ AI analysis failed: ${errorMsg.substring(0, 200)}`,
             });
             state = "idle";

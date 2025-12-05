@@ -113,6 +113,12 @@ export const ClarificationSchema = z.object({
 
 export type Clarification = z.infer<typeof ClarificationSchema>;
 
+export const PrerequisiteActionSchema = z.object({
+  intent: ActionIntentSchema.describe("The type of prerequisite action"),
+  extractedData: z.record(z.any()).describe("Data for the prerequisite action"),
+  reason: z.string().describe("Why this needs to be created first"),
+});
+
 export const SuggestedActionSchema = z.object({
   intent: ActionIntentSchema.describe("The type of action to perform"),
   confidence: z.number().min(0).max(1).describe("Confidence score from 0 to 1"),
@@ -121,6 +127,7 @@ export const SuggestedActionSchema = z.object({
   extractedData: z.record(z.any()).describe("Extracted field values from messages and instruction"),
   missingRequired: z.array(z.string()).describe("Required fields that are missing"),
   clarificationsNeeded: z.array(ClarificationSchema).describe("Things that need user clarification"),
+  prerequisiteActions: z.array(PrerequisiteActionSchema).optional().describe("Actions that should be created first, like creating a company before linking a person to it"),
   reasoning: z.string().describe("Brief explanation of why this action was chosen"),
   noteTitle: z.string().describe("Suggested title for the note that will be created from the forwarded messages"),
 });

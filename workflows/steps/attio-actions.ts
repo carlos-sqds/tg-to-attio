@@ -533,6 +533,10 @@ export async function executeActionWithNote(
     noteTitle: string;
     targetObject: string;
     targetList?: string;
+    prerequisiteActions?: Array<{
+      intent: string;
+      extractedData: Record<string, unknown>;
+    }>;
   },
   messagesContent: string
 ): Promise<ActionResult> {
@@ -541,16 +545,61 @@ export async function executeActionWithNote(
   let result: ActionResult;
   let parentObject: "companies" | "people" | "deals" = "companies";
   let parentRecordId: string | undefined;
+  
+  // Track created prerequisite records for linking
+  const createdRecords: Record<string, string> = {}; // intent -> recordId
 
   const data = action.extractedData;
 
+  // Execute prerequisite actions first
+  if (action.prerequisiteActions && action.prerequisiteActions.length > 0) {
+    for (const prereq of action.prerequisiteActions) {
+      let prereqResult: ActionResult | null = null;
+      
+      switch (prereq.intent) {
+        case "create_company": {
+          prereqResult = await createCompany({
+            name: String(prereq.extractedData.name || ""),
+            domain: String(prereq.extractedData.domains || prereq.extractedData.domain || ""),
+            location: String(prereq.extractedData.primary_location || ""),
+          });
+          if (prereqResult.success && prereqResult.recordId) {
+            createdRecords["company"] = prereqResult.recordId;
+          }
+          break;
+        }
+        case "create_person": {
+          prereqResult = await createPerson({
+            name: String(prereq.extractedData.name || ""),
+            email: String(prereq.extractedData.email || ""),
+            company: createdRecords["company"] ? undefined : String(prereq.extractedData.company || ""),
+          });
+          if (prereqResult.success && prereqResult.recordId) {
+            createdRecords["person"] = prereqResult.recordId;
+          }
+          break;
+        }
+      }
+
+      if (prereqResult && !prereqResult.success) {
+        return {
+          success: false,
+          error: `Failed to create prerequisite: ${prereqResult.error}`,
+        };
+      }
+    }
+  }
+
   switch (action.intent) {
     case "create_person": {
+      // Use prerequisite company if created
+      const companyName = createdRecords["company"] ? undefined : String(data.company || "");
+      
       result = await createPerson({
         name: String(data.name || data.full_name || ""),
         email: String(data.email_addresses || data.email || ""),
         phone: String(data.phone_numbers || data.phone || ""),
-        company: String(data.company || ""),
+        company: companyName,
         jobTitle: String(data.job_title || ""),
         description: String(data.description || ""),
       });
@@ -576,12 +625,17 @@ export async function executeActionWithNote(
       const value = typeof valueData === "object" ? valueData?.amount : valueData;
       const currency = typeof valueData === "object" ? valueData?.currency : "USD";
 
+      // Use prerequisite company if created
+      const companyId = createdRecords["company"];
+      const companyName = companyId ? undefined : String(data.associated_company || data.company || "");
+
       result = await createDeal({
         name: String(data.name || ""),
         value: value as number | undefined,
         currency: String(currency || "USD"),
         stage: String(data.stage || ""),
-        companyName: String(data.associated_company || data.company || ""),
+        companyName,
+        companyId,
       });
       parentObject = "deals";
       parentRecordId = result.recordId;
@@ -589,12 +643,24 @@ export async function executeActionWithNote(
     }
 
     case "create_task": {
+      // Use prerequisite company/person if created
+      let linkedRecordId = String(data.linked_record_id || "");
+      let linkedRecordObject = String(data.linked_record_object || "");
+      
+      if (!linkedRecordId && createdRecords["company"]) {
+        linkedRecordId = createdRecords["company"];
+        linkedRecordObject = "companies";
+      } else if (!linkedRecordId && createdRecords["person"]) {
+        linkedRecordId = createdRecords["person"];
+        linkedRecordObject = "people";
+      }
+
       result = await createTask({
         content: String(data.content || ""),
         assigneeEmail: String(data.assignee_email || ""),
         deadline: data.deadline_at ? String(data.deadline_at) : undefined,
-        linkedRecordId: String(data.linked_record_id || ""),
-        linkedRecordObject: String(data.linked_record_object || ""),
+        linkedRecordId,
+        linkedRecordObject,
       });
       // Tasks don't support notes directly, return early
       return result;

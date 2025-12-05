@@ -249,6 +249,7 @@ export function formatSuggestedAction(action: {
   noteTitle: string;
   clarificationsNeeded: Array<{ field: string; question: string }>;
   confidence: number;
+  prerequisiteActions?: Array<{ intent: string; extractedData: Record<string, unknown> }>;
 }): string {
   const intentLabels: Record<string, string> = {
     create_person: "👤 Create Person",
@@ -259,51 +260,86 @@ export function formatSuggestedAction(action: {
     add_to_list: "📋 Add to List",
   };
 
-  let text = `**${intentLabels[action.intent] || action.intent}**\n\n`;
-
-  // Format extracted data
-  const fieldLabels: Record<string, string> = {
-    name: "Name",
-    email_addresses: "Email",
-    phone_numbers: "Phone",
-    company: "Company",
-    domains: "Domain",
-    primary_location: "Location",
-    value: "Value",
-    stage: "Stage",
-    content: "Task",
-    assignee: "Assignee",
-    deadline: "Deadline",
-    description: "Description",
-    associated_company: "Company",
+  const intentEmojis: Record<string, string> = {
+    create_person: "👤",
+    create_company: "🏢",
+    create_deal: "💰",
+    create_task: "📋",
+    add_note: "📝",
+    add_to_list: "📋",
   };
 
+  // Field display configuration
+  const fieldConfig: Record<string, { label: string; priority: number }> = {
+    name: { label: "Name", priority: 1 },
+    content: { label: "Task", priority: 1 },
+    email_addresses: { label: "Email", priority: 2 },
+    phone_numbers: { label: "Phone", priority: 3 },
+    company: { label: "Company", priority: 4 },
+    associated_company: { label: "Company", priority: 4 },
+    domains: { label: "Domain", priority: 5 },
+    primary_location: { label: "Location", priority: 6 },
+    value: { label: "Value", priority: 2 },
+    stage: { label: "Stage", priority: 3 },
+    assignee: { label: "Assignee", priority: 2 },
+    deadline_at: { label: "Deadline", priority: 3 },
+    deadline: { label: "Deadline", priority: 3 },
+    description: { label: "Description", priority: 10 },
+    job_title: { label: "Title", priority: 5 },
+  };
+
+  // Skip these internal fields
+  const skipFields = new Set(["noteTitle", "linked_record_id", "linked_record_object", "assignee_email", "assignee_id"]);
+
+  let text = `${intentLabels[action.intent] || action.intent}\n`;
+  text += "━━━━━━━━━━━━━━━━━━━━\n";
+
+  // Collect and sort fields
+  const fields: Array<{ key: string; label: string; value: string; priority: number }> = [];
+
   for (const [key, value] of Object.entries(action.extractedData)) {
-    if (value && key !== "noteTitle") {
-      const label = fieldLabels[key] || key;
-      let displayValue: string;
+    if (!value || skipFields.has(key)) continue;
+    
+    const config = fieldConfig[key] || { label: key.replace(/_/g, " "), priority: 99 };
+    let displayValue: string;
 
-      // Handle nested objects like { amount: 50000, currency: "USD" }
-      if (typeof value === "object" && value !== null) {
-        const obj = value as Record<string, unknown>;
-        if (obj.amount !== undefined && obj.amount !== null) {
-          displayValue = `$${Number(obj.amount).toLocaleString()} ${obj.currency || "USD"}`;
-        } else {
-          displayValue = JSON.stringify(value);
-        }
+    if (typeof value === "object" && value !== null) {
+      const obj = value as Record<string, unknown>;
+      if (obj.amount !== undefined && obj.amount !== null) {
+        displayValue = `$${Number(obj.amount).toLocaleString()} ${obj.currency || "USD"}`;
       } else {
-        displayValue = String(value);
+        displayValue = JSON.stringify(value);
       }
+    } else {
+      displayValue = String(value);
+    }
 
-      text += `• **${label}:** ${escapeMarkdown(displayValue)}\n`;
+    if (displayValue && displayValue !== "undefined" && displayValue !== "null") {
+      fields.push({ key, label: config.label, value: displayValue, priority: config.priority });
     }
   }
 
-  text += `\n📎 Note: "${escapeMarkdown(action.noteTitle)}"`;
+  // Sort by priority and display
+  fields.sort((a, b) => a.priority - b.priority);
+  for (const field of fields) {
+    text += `${field.label}: ${escapeMarkdown(field.value)}\n`;
+  }
+
+  // Show prerequisite actions if any
+  if (action.prerequisiteActions && action.prerequisiteActions.length > 0) {
+    text += "\n📦 Will also create:\n";
+    for (const prereq of action.prerequisiteActions) {
+      const emoji = intentEmojis[prereq.intent] || "•";
+      const name = prereq.extractedData.name || prereq.extractedData.content || "item";
+      text += `${emoji} ${escapeMarkdown(String(name))}\n`;
+    }
+  }
+
+  text += `\n📎 ${escapeMarkdown(action.noteTitle)}`;
 
   // Show clarifications needed
   if (action.clarificationsNeeded.length > 0) {
-    text += `\n\n⚠️ **Questions:**\n`;
+    text += `\n\n⚠️ Need info:\n`;
     for (const c of action.clarificationsNeeded) {
       text += `• ${escapeMarkdown(c.question)}\n`;
     }

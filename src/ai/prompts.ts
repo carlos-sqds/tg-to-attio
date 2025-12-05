@@ -77,6 +77,15 @@ When extracting data:
 If multiple companies or people match, set clarificationsNeeded with the ambiguous field.
 If a required field is missing and cannot be inferred, add it to missingRequired.
 
+## Prerequisite Actions
+
+When the user mentions creating dependent records (e.g., "create company if doesn't exist"), use the prerequisiteActions array:
+- If creating a person linked to a company that doesn't exist, add create_company as prerequisite
+- If creating a task about a company that should be created, add create_company as prerequisite
+- Example: "create task for Iron company - create Iron if needed" → prerequisiteActions: [{intent: "create_company", extractedData: {name: "Iron"}, reason: "User requested company creation"}]
+
+The prerequisite actions will be executed BEFORE the main action, and their IDs will be used to link records.
+
 ## Important: Note Creation
 
 The forwarded messages will ALWAYS be saved as a note attached to the created/referenced record.

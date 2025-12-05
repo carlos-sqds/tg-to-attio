@@ -175,8 +175,18 @@ export async function POST(request: NextRequest) {
       // All other commands - try to resume workflow
       if (text.startsWith("/")) {
         const command = text.split(" ")[0].toLowerCase();
-        const event: TelegramEvent = { type: "command", command };
         
+        // For /done, send as text_message to preserve the instruction
+        if (command === "/done") {
+          const event: TelegramEvent = { type: "text_message", text };
+          const success = await tryResumeWorkflow(userId, event);
+          if (!success) {
+            await sendTelegramMessage(chatId, "Please send /start first to begin.");
+          }
+          return NextResponse.json({ ok: true });
+        }
+        
+        const event: TelegramEvent = { type: "command", command };
         const success = await tryResumeWorkflow(userId, event);
         if (!success) {
           await sendTelegramMessage(chatId, "Please send /start first to begin.");

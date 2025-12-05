@@ -239,6 +239,10 @@ export function buildSearchResultSelectionKeyboard(
 
 // ============ MESSAGE FORMATTERS ============
 
+function escapeMarkdown(text: string): string {
+  return String(text).replace(/[_*[\]()~`>#+=|{}.!-]/g, "\\$&");
+}
+
 export function formatSuggestedAction(action: {
   intent: string;
   extractedData: Record<string, unknown>;
@@ -277,7 +281,7 @@ export function formatSuggestedAction(action: {
   for (const [key, value] of Object.entries(action.extractedData)) {
     if (value && key !== "noteTitle") {
       const label = fieldLabels[key] || key;
-      let displayValue = value;
+      let displayValue: string;
 
       // Handle nested objects like { amount: 50000, currency: "USD" }
       if (typeof value === "object" && value !== null) {
@@ -287,19 +291,21 @@ export function formatSuggestedAction(action: {
         } else {
           displayValue = JSON.stringify(value);
         }
+      } else {
+        displayValue = String(value);
       }
 
-      text += `• **${label}:** ${displayValue}\n`;
+      text += `• **${label}:** ${escapeMarkdown(displayValue)}\n`;
     }
   }
 
-  text += `\n📎 Note: "${action.noteTitle}"`;
+  text += `\n📎 Note: "${escapeMarkdown(action.noteTitle)}"`;
 
   // Show clarifications needed
   if (action.clarificationsNeeded.length > 0) {
     text += `\n\n⚠️ **Questions:**\n`;
     for (const c of action.clarificationsNeeded) {
-      text += `• ${c.question}\n`;
+      text += `• ${escapeMarkdown(c.question)}\n`;
     }
   }
 

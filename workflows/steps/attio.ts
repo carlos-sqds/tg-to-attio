@@ -43,6 +43,10 @@ async function attioRequest<T>(
 export async function searchCompanies(query: string): Promise<CompanySearchResult[]> {
   "use step";
 
+  console.log("[ATTIO] searchCompanies called with query:", query);
+  console.log("[ATTIO] API key present:", !!config.attioApiKey);
+  console.log("[ATTIO] API key prefix:", config.attioApiKey?.substring(0, 8) || "MISSING");
+
   const searchInput: SearchCompaniesInput = {
     filter: {
       name: {
@@ -52,39 +56,46 @@ export async function searchCompanies(query: string): Promise<CompanySearchResul
     limit: config.conversation.maxSearchResults + 5,
   };
 
-  logger.info("Searching companies", { query });
+  console.log("[ATTIO] Search input:", JSON.stringify(searchInput));
 
-  const response = await attioRequest<{ data: AttioCompany[] }>(
-    `/objects/${config.attio.companiesObject}/records/query`,
-    {
-      method: "POST",
-      body: JSON.stringify(searchInput),
-    }
-  );
+  try {
+    const response = await attioRequest<{ data: AttioCompany[] }>(
+      `/objects/${config.attio.companiesObject}/records/query`,
+      {
+        method: "POST",
+        body: JSON.stringify(searchInput),
+      }
+    );
 
-  const results: CompanySearchResult[] = response.data.map((company) => {
-    const name = company.values.name?.[0]?.value || "Unnamed Company";
+    console.log("[ATTIO] Response received, company count:", response.data?.length || 0);
 
-    let location: string | undefined;
-    const locationData = company.values.locations?.[0];
-    if (locationData) {
-      const parts = [
-        locationData.locality,
-        locationData.region,
-        locationData.country,
-      ].filter(Boolean);
-      location = parts.length > 0 ? parts.join(", ") : undefined;
-    }
+    const results: CompanySearchResult[] = response.data.map((company) => {
+      const name = company.values.name?.[0]?.value || "Unnamed Company";
 
-    return {
-      id: company.id.record_id,
-      name,
-      location,
-    };
-  });
+      let location: string | undefined;
+      const locationData = company.values.locations?.[0];
+      if (locationData) {
+        const parts = [
+          locationData.locality,
+          locationData.region,
+          locationData.country,
+        ].filter(Boolean);
+        location = parts.length > 0 ? parts.join(", ") : undefined;
+      }
 
-  logger.info("Company search results", { query, count: results.length });
-  return results;
+      return {
+        id: company.id.record_id,
+        name,
+        location,
+      };
+    });
+
+    console.log("[ATTIO] Returning results:", results.length);
+    return results;
+  } catch (error) {
+    console.error("[ATTIO] Search error:", error instanceof Error ? error.message : String(error));
+    throw error;
+  }
 }
 
 export async function createNote(input: CreateNoteInput): Promise<AttioNote> {

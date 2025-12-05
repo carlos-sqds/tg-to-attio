@@ -293,13 +293,23 @@ Which company are these messages for?`;
       }
 
       // Handle text messages (company search)
-      if (event.type === "text_message" && state === "awaiting_company_search") {
+      if (event.type === "text_message") {
+        console.log("[WORKFLOW] text_message received, state:", state, "text:", event.text);
+        
+        if (state !== "awaiting_company_search") {
+          console.log("[WORKFLOW] Ignoring text_message - not in awaiting_company_search state");
+          continue;
+        }
+
         const query = event.text || "";
+        console.log("[WORKFLOW] Starting company search for:", query);
 
         await sendMessage({ chatId, text: "🔍 Searching..." });
 
         try {
+          console.log("[WORKFLOW] Calling searchCompanies...");
           searchResults = await searchCompanies(query);
+          console.log("[WORKFLOW] searchCompanies returned:", searchResults.length, "results");
 
           if (searchResults.length === 0) {
             await sendMessage({
@@ -325,7 +335,7 @@ Which company are these messages for?`;
             replyMarkup: { inline_keyboard: buildSearchResultsKeyboard(searchResults) },
           });
         } catch (error) {
-          logger.error("Search failed", { error });
+          console.error("[WORKFLOW] Search failed:", error instanceof Error ? error.message : String(error));
           await sendMessage({
             chatId,
             text: "❌ Search failed. Please try again.",

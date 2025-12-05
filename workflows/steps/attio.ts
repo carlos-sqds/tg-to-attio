@@ -1,5 +1,3 @@
-import { config } from "@/src/lib/config";
-import { logger } from "@/src/lib/logger";
 import type {
   AttioCompany,
   AttioNote,
@@ -12,15 +10,15 @@ const ATTIO_BASE_URL = "https://api.attio.com/v2";
 
 async function attioRequest<T>(
   endpoint: string,
+  apiKey: string,
   options: RequestInit = {}
 ): Promise<T> {
   const url = `${ATTIO_BASE_URL}${endpoint}`;
   
   console.log("[ATTIO_REQUEST] Starting request to:", endpoint);
-  console.log("[ATTIO_REQUEST] API key exists:", !!config.attioApiKey);
 
   const headers = {
-    Authorization: `Bearer ${config.attioApiKey}`,
+    Authorization: `Bearer ${apiKey}`,
     "Content-Type": "application/json",
     ...options.headers,
   };
@@ -49,9 +47,16 @@ async function attioRequest<T>(
 export async function searchCompanies(query: string): Promise<CompanySearchResult[]> {
   "use step";
 
+  // Access env vars directly inside step function
+  const apiKey = process.env.ATTIO_API_KEY;
+  
   console.log("[ATTIO] searchCompanies called with query:", query);
-  console.log("[ATTIO] API key present:", !!config.attioApiKey);
-  console.log("[ATTIO] API key prefix:", config.attioApiKey?.substring(0, 8) || "MISSING");
+  console.log("[ATTIO] API key present:", !!apiKey);
+  console.log("[ATTIO] API key prefix:", apiKey?.substring(0, 8) || "MISSING");
+
+  if (!apiKey) {
+    throw new Error("ATTIO_API_KEY not configured");
+  }
 
   const searchInput: SearchCompaniesInput = {
     filter: {
@@ -59,14 +64,15 @@ export async function searchCompanies(query: string): Promise<CompanySearchResul
         $contains: query,
       },
     },
-    limit: config.conversation.maxSearchResults + 5,
+    limit: 10,
   };
 
   console.log("[ATTIO] Search input:", JSON.stringify(searchInput));
 
   try {
     const response = await attioRequest<{ data: AttioCompany[] }>(
-      `/objects/${config.attio.companiesObject}/records/query`,
+      "/objects/companies/records/query",
+      apiKey,
       {
         method: "POST",
         body: JSON.stringify(searchInput),
@@ -107,22 +113,27 @@ export async function searchCompanies(query: string): Promise<CompanySearchResul
 export async function createNote(input: CreateNoteInput): Promise<AttioNote> {
   "use step";
 
-  logger.info("Creating note", {
-    parentObject: input.parent_object,
-    parentRecordId: input.parent_record_id,
-    title: input.title,
-  });
+  // Access env vars directly inside step function
+  const apiKey = process.env.ATTIO_API_KEY;
+  
+  console.log("[ATTIO] Creating note for:", input.parent_record_id);
 
-  const response = await attioRequest<{ data: AttioNote }>("/notes", {
-    method: "POST",
-    body: JSON.stringify({
-      data: input,
-    }),
-  });
+  if (!apiKey) {
+    throw new Error("ATTIO_API_KEY not configured");
+  }
 
-  logger.info("Note created successfully", {
-    noteId: response.data.id.note_id,
-  });
+  const response = await attioRequest<{ data: AttioNote }>(
+    "/notes",
+    apiKey,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        data: input,
+      }),
+    }
+  );
+
+  console.log("[ATTIO] Note created:", response.data.id.note_id);
 
   return response.data;
 }

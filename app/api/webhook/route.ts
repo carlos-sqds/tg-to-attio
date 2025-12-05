@@ -99,7 +99,7 @@ function extractForwardedMessage(message: TelegramMessage): ForwardedMessageData
 }
 
 async function tryResumeWorkflow(userId: number, event: TelegramEvent): Promise<boolean> {
-  const token = `user-${userId}`;
+  const token = `ai-${userId}`;
   
   try {
     await telegramHook.resume(token, event);

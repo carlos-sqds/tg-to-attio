@@ -98,48 +98,16 @@ function extractForwardedMessage(message: TelegramMessage): ForwardedMessageData
   };
 }
 
-const WELCOME_MESSAGE = `👋 Welcome to the Attio CRM Bot!
-
-📋 How it works:
-
-1️⃣ Forward me messages from your customer conversations
-2️⃣ When you're done forwarding, send /done
-3️⃣ Select which company they belong to
-4️⃣ All messages will be added to that company in Attio
-
-Commands:
-/done - Process queued messages
-/clear - Clear message queue
-/cancel - Cancel current operation
-/help - Show this help message`;
-
-async function ensureWorkflowAndResume(userId: number, chatId: number, event: TelegramEvent): Promise<boolean> {
+async function tryResumeWorkflow(userId: number, event: TelegramEvent): Promise<boolean> {
   const token = `user-${userId}`;
   
   try {
-    // First try to resume an existing workflow
     await telegramHook.resume(token, event);
-    logger.info("Resumed existing workflow", { userId, eventType: event.type });
+    logger.info("Resumed workflow", { userId, eventType: event.type });
     return true;
-  } catch (resumeError) {
-    logger.info("No existing workflow, starting new one", { userId, error: String(resumeError) });
-    
-    try {
-      // Start a new workflow
-      const run = await start(conversationWorkflow, [userId, chatId]);
-      logger.info("Started new workflow", { userId, runId: run.runId });
-      
-      // Wait a bit for the workflow to create its hook
-      await new Promise(resolve => setTimeout(resolve, 200));
-      
-      // Now try to resume
-      await telegramHook.resume(token, event);
-      logger.info("Resumed new workflow", { userId, eventType: event.type });
-      return true;
-    } catch (startError) {
-      logger.error("Failed to start/resume workflow", { userId, error: String(startError) });
-      return false;
-    }
+  } catch (error) {
+    logger.info("Failed to resume workflow", { userId, error: String(error) });
+    return false;
   }
 }
 
@@ -163,7 +131,10 @@ export async function POST(request: NextRequest) {
         callbackQueryId: cq.id,
       };
 
-      await ensureWorkflowAndResume(userId, chatId, event);
+      const success = await tryResumeWorkflow(userId, event);
+      if (!success) {
+        await sendTelegramMessage(chatId, "Please send /start first to begin.");
+      }
       return NextResponse.json({ ok: true });
     }
 
@@ -178,48 +149,62 @@ export async function POST(request: NextRequest) {
       const chatId = msg.chat.id;
       const text = msg.text || "";
 
-      // Handle /start and /help directly (fast response)
-      if (text === "/start" || text === "/help") {
-        await sendTelegramMessage(chatId, WELCOME_MESSAGE);
-        logger.info("Sent welcome message", { userId });
+      // /start - Start a new workflow (workflow will send welcome)
+      if (text === "/start") {
+        try {
+          const run = await start(conversationWorkflow, [userId, chatId]);
+          logger.info("Started new workflow", { userId, runId: run.runId });
+        } catch (error) {
+          logger.error("Failed to start workflow", { userId, error: String(error) });
+          await sendTelegramMessage(chatId, "Failed to start. Please try again.");
+        }
         return NextResponse.json({ ok: true });
       }
 
-      // Commands go through workflow
+      // /help - Send help directly (no workflow needed)
+      if (text === "/help") {
+        await sendTelegramMessage(chatId, `Commands:
+/start - Start a new session
+/done - Process queued messages
+/clear - Clear message queue
+/cancel - Cancel current operation
+/help - Show this help message`);
+        return NextResponse.json({ ok: true });
+      }
+
+      // All other commands - try to resume workflow
       if (text.startsWith("/")) {
         const command = text.split(" ")[0].toLowerCase();
         const event: TelegramEvent = { type: "command", command };
         
-        const success = await ensureWorkflowAndResume(userId, chatId, event);
+        const success = await tryResumeWorkflow(userId, event);
         if (!success) {
-          if (command === "/done") {
-            await sendTelegramMessage(chatId, "📭 No messages in queue. Forward some messages first!");
-          } else if (command === "/clear") {
-            await sendTelegramMessage(chatId, "✨ Queue cleared.");
-          }
+          await sendTelegramMessage(chatId, "Please send /start first to begin.");
         }
-        
         return NextResponse.json({ ok: true });
       }
 
-      // Forwarded messages
+      // Forwarded messages - try to resume workflow
       if (msg.forward_origin) {
         const forwardedMessage = extractForwardedMessage(msg);
         if (forwardedMessage) {
           const event: TelegramEvent = { type: "forwarded_message", forwardedMessage };
           
-          const success = await ensureWorkflowAndResume(userId, chatId, event);
+          const success = await tryResumeWorkflow(userId, event);
           if (!success) {
-            await sendTelegramMessage(chatId, "📥 Message received. (Workflow initialization in progress...)");
+            await sendTelegramMessage(chatId, "Please send /start first to begin.");
           }
         }
         return NextResponse.json({ ok: true });
       }
 
-      // Regular text messages (for company search)
+      // Regular text messages (for company search) - try to resume workflow
       if (text && !text.startsWith("/")) {
         const event: TelegramEvent = { type: "text_message", text };
-        await ensureWorkflowAndResume(userId, chatId, event);
+        const success = await tryResumeWorkflow(userId, event);
+        if (!success) {
+          await sendTelegramMessage(chatId, "Please send /start first to begin.");
+        }
         return NextResponse.json({ ok: true });
       }
     }

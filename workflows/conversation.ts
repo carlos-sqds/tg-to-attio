@@ -28,6 +28,28 @@ export async function conversationWorkflow(userId: number, chatId: number) {
   let lastBotMessageId: number | null = null;
   let state: ConversationState = "idle";
 
+  // Send welcome message immediately when workflow starts
+  await sendMessage({
+    chatId,
+    text: `👋 Welcome to the Attio CRM Bot!
+
+📋 How it works:
+
+1️⃣ Forward me messages from your customer conversations
+2️⃣ When you're done forwarding, send /done
+3️⃣ Select which company they belong to
+4️⃣ All messages will be added to that company in Attio
+
+Commands:
+/done - Process queued messages
+/clear - Clear message queue
+/cancel - Cancel current operation
+/help - Show this help message`,
+  });
+
+  logger.info("Workflow started, waiting for events", { userId });
+
+  // Create hook and wait for events
   const events = telegramHook.create({ token: `user-${userId}` });
 
   for await (const event of events) {
@@ -179,27 +201,6 @@ export async function conversationWorkflow(userId: number, chatId: number) {
       // Handle commands
       if (event.type === "command") {
         const command = event.command;
-
-        if (command === "/start" || command === "/help") {
-          await sendMessage({
-            chatId,
-            text: `👋 Welcome to the Attio CRM Bot!
-
-📋 How it works:
-
-1️⃣ Forward me messages from your customer conversations
-2️⃣ When you're done forwarding, send /done
-3️⃣ Select which company they belong to
-4️⃣ All messages will be added to that company in Attio
-
-Commands:
-/done - Process queued messages
-/clear - Clear message queue
-/cancel - Cancel current operation
-/help - Show this help message`,
-          });
-          continue;
-        }
 
         if (command === "/clear") {
           const count = messageQueue.length;

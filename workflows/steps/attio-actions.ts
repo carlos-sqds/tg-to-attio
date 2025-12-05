@@ -275,36 +275,36 @@ export interface CreateTaskInput {
   content: string;
   assigneeId?: string;
   assigneeEmail?: string;
-  deadline?: string; // ISO date string
+  deadline?: unknown; // Can be ISO string, relative date, or various formats
   linkedRecordId?: string;
   linkedRecordObject?: string; // "people", "companies", "deals"
 }
 
-function parseDeadline(deadline: string | undefined): string | null {
+function parseDeadline(deadline: unknown): string | null {
   if (!deadline) return null;
   
-  // Try parsing as ISO date first
-  const isoDate = new Date(deadline);
-  if (!isNaN(isoDate.getTime())) {
-    return isoDate.toISOString();
-  }
+  // Convert to string if needed
+  const deadlineStr = typeof deadline === "string" ? deadline : String(deadline);
+  if (!deadlineStr || deadlineStr === "undefined" || deadlineStr === "null") return null;
   
-  // Handle relative dates
   const now = new Date();
-  const lowerDeadline = deadline.toLowerCase();
+  const lowerDeadline = deadlineStr.toLowerCase().trim();
   
+  // Handle relative dates first (before trying Date parsing)
   if (lowerDeadline.includes("tomorrow")) {
     now.setDate(now.getDate() + 1);
+    now.setHours(9, 0, 0, 0); // 9 AM
     return now.toISOString();
   }
   
-  if (lowerDeadline.includes("next week")) {
+  if (lowerDeadline.includes("next week") || lowerDeadline === "1 week" || lowerDeadline === "a week") {
     now.setDate(now.getDate() + 7);
+    now.setHours(9, 0, 0, 0);
     return now.toISOString();
   }
   
   // Handle "next wednesday", "next monday", etc.
-  const dayMatch = lowerDeadline.match(/next\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday)/i);
+  const dayMatch = lowerDeadline.match(/(?:next\s+)?(monday|tuesday|wednesday|thursday|friday|saturday|sunday)/i);
   if (dayMatch) {
     const days = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
     const targetDay = days.indexOf(dayMatch[1].toLowerCase());
@@ -312,16 +312,36 @@ function parseDeadline(deadline: string | undefined): string | null {
     let daysUntil = targetDay - currentDay;
     if (daysUntil <= 0) daysUntil += 7;
     now.setDate(now.getDate() + daysUntil);
+    now.setHours(9, 0, 0, 0);
     return now.toISOString();
   }
   
-  // Handle "in X days"
-  const daysMatch = lowerDeadline.match(/in\s+(\d+)\s+days?/i);
+  // Handle "in X days" or "X days"
+  const daysMatch = lowerDeadline.match(/(?:in\s+)?(\d+)\s*days?/i);
   if (daysMatch) {
     now.setDate(now.getDate() + parseInt(daysMatch[1], 10));
+    now.setHours(9, 0, 0, 0);
     return now.toISOString();
   }
   
+  // Handle "end of week", "eow"
+  if (lowerDeadline.includes("end of week") || lowerDeadline === "eow") {
+    const daysUntilFriday = (5 - now.getDay() + 7) % 7 || 7;
+    now.setDate(now.getDate() + daysUntilFriday);
+    now.setHours(17, 0, 0, 0);
+    return now.toISOString();
+  }
+  
+  // Only try ISO date parsing for strings that look like dates (YYYY-MM-DD format)
+  const isoMatch = deadlineStr.match(/^\d{4}-\d{2}-\d{2}/);
+  if (isoMatch) {
+    const isoDate = new Date(deadlineStr);
+    if (!isNaN(isoDate.getTime())) {
+      return isoDate.toISOString();
+    }
+  }
+  
+  // Don't try to parse arbitrary strings - return null for unrecognized formats
   return null;
 }
 
@@ -658,7 +678,7 @@ export async function executeActionWithNote(
       result = await createTask({
         content: String(data.content || ""),
         assigneeEmail: String(data.assignee_email || ""),
-        deadline: data.deadline_at ? String(data.deadline_at) : undefined,
+        deadline: data.deadline_at, // parseDeadline handles any format
         linkedRecordId,
         linkedRecordObject,
       });

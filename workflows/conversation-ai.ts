@@ -252,7 +252,6 @@ Commands:
                 chatId,
                 messageId: lastBotMessageId,
                 text: suggestionText,
-                parseMode: "Markdown",
                 replyMarkup: {
                   inline_keyboard: buildAISuggestionKeyboard(false),
                 },
@@ -297,7 +296,6 @@ Commands:
                 chatId,
                 messageId: lastBotMessageId,
                 text: suggestionText,
-                parseMode: "Markdown",
                 replyMarkup: {
                   inline_keyboard: buildAISuggestionKeyboard(false),
                 },
@@ -457,7 +455,6 @@ Commands:
               chatId,
               messageId: lastBotMessageId,
               text: suggestionText,
-              parseMode: "Markdown",
               replyMarkup: {
                 inline_keyboard: buildAISuggestionKeyboard(hasClarifications),
               },
@@ -536,7 +533,6 @@ Commands:
               chatId,
               messageId: lastBotMessageId,
               text: suggestionText,
-              parseMode: "Markdown",
               replyMarkup: {
                 inline_keyboard: buildAISuggestionKeyboard(hasClarifications),
               },
@@ -586,7 +582,6 @@ Commands:
               chatId,
               messageId: lastBotMessageId,
               text: suggestionText,
-              parseMode: "Markdown",
               replyMarkup: {
                 inline_keyboard: buildAISuggestionKeyboard(hasClarifications),
               },
@@ -630,7 +625,6 @@ Commands:
               chatId,
               messageId: lastBotMessageId,
               text: suggestionText,
-              parseMode: "Markdown",
               replyMarkup: {
                 inline_keyboard: buildAISuggestionKeyboard(hasClarifications),
               },

@@ -379,9 +379,15 @@ export async function createTask(input: CreateTaskInput): Promise<ActionResult> 
 
   // Parse and validate deadline
   const parsedDeadline = parseDeadline(input.deadline);
+  console.log("[TASK] Deadline parsing:", { 
+    input: input.deadline, 
+    inputType: typeof input.deadline,
+    parsed: parsedDeadline 
+  });
   if (parsedDeadline) {
     data.deadline_at = parsedDeadline;
   }
+  console.log("[TASK] Sending to Attio:", JSON.stringify(data, null, 2));
 
   try {
     const response = await attioRequest<AttioTaskResponse>(

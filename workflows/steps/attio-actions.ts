@@ -678,7 +678,7 @@ export async function executeActionWithNote(
       result = await createTask({
         content: String(data.content || ""),
         assigneeEmail: String(data.assignee_email || ""),
-        deadline: data.deadline_at, // parseDeadline handles any format
+        deadline: data.deadline_at || data.due_date || data.deadline, // AI may use different field names
         linkedRecordId,
         linkedRecordObject,
       });

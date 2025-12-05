@@ -291,8 +291,9 @@ export function formatSuggestedAction(action: {
     value: { label: "Value", priority: 2 },
     stage: { label: "Stage", priority: 3 },
     assignee: { label: "Assignee", priority: 2 },
-    deadline_at: { label: "Deadline", priority: 3 },
-    deadline: { label: "Deadline", priority: 3 },
+    deadline_at: { label: "Due", priority: 3 },
+    deadline: { label: "Due", priority: 3 },
+    due_date: { label: "Due", priority: 3 },
     description: { label: "Description", priority: 10 },
     job_title: { label: "Title", priority: 5 },
   };
@@ -322,15 +323,21 @@ export function formatSuggestedAction(action: {
       displayValue = String(value);
     }
 
-    // Format ISO dates as readable dates
-    if ((key === "deadline_at" || key === "deadline" || key === "date") && displayValue.match(/^\d{4}-\d{2}-\d{2}T/)) {
-      const date = new Date(displayValue);
-      displayValue = date.toLocaleDateString("en-US", { 
-        weekday: "short", 
-        month: "short", 
-        day: "numeric",
-        year: date.getFullYear() !== new Date().getFullYear() ? "numeric" : undefined
-      });
+    // Format dates as readable dates
+    const dateFields = ["deadline_at", "deadline", "due_date", "date"];
+    if (dateFields.includes(key)) {
+      // Check for ISO format or YYYY-MM-DD format
+      if (displayValue.match(/^\d{4}-\d{2}-\d{2}/)) {
+        const date = new Date(displayValue);
+        if (!isNaN(date.getTime())) {
+          displayValue = date.toLocaleDateString("en-US", { 
+            weekday: "short", 
+            month: "short", 
+            day: "numeric",
+            year: date.getFullYear() !== new Date().getFullYear() ? "numeric" : undefined
+          });
+        }
+      }
     }
 
     if (displayValue && displayValue !== "undefined" && displayValue !== "null") {

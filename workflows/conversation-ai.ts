@@ -379,9 +379,11 @@ Commands:
       // Handle text messages
       if (event.type === "text_message" && event.text) {
         const text = event.text;
+        console.log("[WORKFLOW] Received text_message:", text.substring(0, 50));
 
         // Check for /done command with instruction
         if (text.startsWith("/done")) {
+          console.log("[WORKFLOW] Processing /done command");
           const instruction = text.replace("/done", "").trim();
 
           if (messageQueue.length === 0 && !instruction) {
@@ -403,23 +405,30 @@ Commands:
 
           // Process with AI
           state = "processing_ai";
+          console.log("[WORKFLOW] Starting AI processing, instruction:", instruction.substring(0, 50));
           
           // Always show visible feedback first
+          console.log("[WORKFLOW] Sending processing message...");
           lastBotMessageId = await sendMessage({
             chatId,
             text: "🤖 Processing your request...",
           });
+          console.log("[WORKFLOW] Processing message sent, id:", lastBotMessageId);
 
           try {
             // Reaction inside try (optional, can fail silently)
             if (event.messageId) {
+              console.log("[WORKFLOW] Setting reaction...");
               await setMessageReaction(chatId, event.messageId, "🤔");
             }
 
+            console.log("[WORKFLOW] Fetching schema...");
             if (!schema) {
               schema = await fetchFullSchema();
             }
+            console.log("[WORKFLOW] Schema fetched, objects:", schema.objects.length);
 
+            console.log("[WORKFLOW] Calling analyzeIntent...");
             currentAction = await analyzeIntent({
               messages: messageQueue.map((m) => ({
                 text: m.text,
@@ -432,6 +441,7 @@ Commands:
               instruction,
               schema,
             });
+            console.log("[WORKFLOW] analyzeIntent returned:", currentAction?.intent);
 
             // Remove thinking reaction
             if (event.messageId) {
@@ -459,6 +469,7 @@ Commands:
               confidence: currentAction.confidence,
             });
           } catch (error) {
+            console.log("[WORKFLOW] ERROR in AI processing:", error);
             // Remove thinking reaction on error
             if (event.messageId) {
               await setMessageReaction(chatId, event.messageId, null);

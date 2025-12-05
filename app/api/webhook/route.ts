@@ -178,8 +178,10 @@ export async function POST(request: NextRequest) {
         
         // For /done, send as text_message to preserve the instruction
         if (command === "/done") {
+          console.log("[WEBHOOK] /done command received, text:", text.substring(0, 50));
           const event: TelegramEvent = { type: "text_message", text, messageId: msg.message_id };
           const success = await tryResumeWorkflow(userId, event);
+          console.log("[WEBHOOK] tryResumeWorkflow result:", success);
           if (!success) {
             await sendTelegramMessage(chatId, "Please send /start first to begin.");
           }

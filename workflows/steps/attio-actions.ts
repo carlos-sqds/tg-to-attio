@@ -280,38 +280,87 @@ export interface CreateTaskInput {
   linkedRecordObject?: string; // "people", "companies", "deals"
 }
 
+function parseDeadline(deadline: string | undefined): string | null {
+  if (!deadline) return null;
+  
+  // Try parsing as ISO date first
+  const isoDate = new Date(deadline);
+  if (!isNaN(isoDate.getTime())) {
+    return isoDate.toISOString();
+  }
+  
+  // Handle relative dates
+  const now = new Date();
+  const lowerDeadline = deadline.toLowerCase();
+  
+  if (lowerDeadline.includes("tomorrow")) {
+    now.setDate(now.getDate() + 1);
+    return now.toISOString();
+  }
+  
+  if (lowerDeadline.includes("next week")) {
+    now.setDate(now.getDate() + 7);
+    return now.toISOString();
+  }
+  
+  // Handle "next wednesday", "next monday", etc.
+  const dayMatch = lowerDeadline.match(/next\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday)/i);
+  if (dayMatch) {
+    const days = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
+    const targetDay = days.indexOf(dayMatch[1].toLowerCase());
+    const currentDay = now.getDay();
+    let daysUntil = targetDay - currentDay;
+    if (daysUntil <= 0) daysUntil += 7;
+    now.setDate(now.getDate() + daysUntil);
+    return now.toISOString();
+  }
+  
+  // Handle "in X days"
+  const daysMatch = lowerDeadline.match(/in\s+(\d+)\s+days?/i);
+  if (daysMatch) {
+    now.setDate(now.getDate() + parseInt(daysMatch[1], 10));
+    return now.toISOString();
+  }
+  
+  return null;
+}
+
 export async function createTask(input: CreateTaskInput): Promise<ActionResult> {
   "use step";
 
   const apiKey = process.env.ATTIO_API_KEY;
   if (!apiKey) throw new Error("ATTIO_API_KEY not configured");
 
+  // Build linked_records array (required by Attio, even if empty)
+  const linkedRecords: Array<{ target_object: string; target_record_id: string }> = [];
+  if (input.linkedRecordId && input.linkedRecordObject) {
+    linkedRecords.push({
+      target_object: input.linkedRecordObject,
+      target_record_id: input.linkedRecordId,
+    });
+  }
+
+  // Build assignees array (required by Attio, even if empty)
+  const assignees: Array<{ referenced_actor_type: string; referenced_actor_id: string }> = [];
+  if (input.assigneeId) {
+    assignees.push({
+      referenced_actor_type: "workspace-member",
+      referenced_actor_id: input.assigneeId,
+    });
+  }
+
   const data: Record<string, unknown> = {
     content: input.content,
     format: "plaintext",
     is_completed: false,
+    linked_records: linkedRecords,
+    assignees: assignees,
   };
 
-  if (input.deadline) {
-    data.deadline_at = input.deadline;
-  }
-
-  if (input.assigneeId) {
-    data.assignees = [
-      {
-        referenced_actor_type: "workspace-member",
-        referenced_actor_id: input.assigneeId,
-      },
-    ];
-  }
-
-  if (input.linkedRecordId && input.linkedRecordObject) {
-    data.linked_records = [
-      {
-        target_object: input.linkedRecordObject,
-        target_record_id: input.linkedRecordId,
-      },
-    ];
+  // Parse and validate deadline
+  const parsedDeadline = parseDeadline(input.deadline);
+  if (parsedDeadline) {
+    data.deadline_at = parsedDeadline;
   }
 
   try {

@@ -88,6 +88,27 @@ export async function answerCallbackQuery(callbackQueryId: string): Promise<void
   await telegramRequest("answerCallbackQuery", { callback_query_id: callbackQueryId });
 }
 
+export async function setMessageReaction(
+  chatId: number,
+  messageId: number,
+  emoji: string | null
+): Promise<void> {
+  "use step";
+  
+  const body: Record<string, unknown> = {
+    chat_id: chatId,
+    message_id: messageId,
+    reaction: emoji ? [{ type: "emoji", emoji }] : [],
+  };
+
+  try {
+    await telegramRequest("setMessageReaction", body);
+  } catch (error) {
+    // Reactions might fail if bot doesn't have permission - silently ignore
+    logger.info("Could not set reaction", { error: String(error) });
+  }
+}
+
 export function buildCompanySelectionKeyboard(
   recentCompanies: Array<{ id: string; name: string }>
 ): InlineKeyboardButton[][] {

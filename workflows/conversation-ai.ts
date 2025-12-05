@@ -6,6 +6,7 @@ import {
   sendMessage,
   editMessage,
   answerCallbackQuery,
+  setMessageReaction,
   buildAISuggestionKeyboard,
   buildClarificationKeyboard,
   buildEditFieldKeyboard,
@@ -402,10 +403,11 @@ Commands:
 
           // Process with AI
           state = "processing_ai";
-          lastBotMessageId = await sendMessage({
-            chatId,
-            text: "🤖 Analyzing...",
-          });
+          
+          // React to user's message to show we're thinking
+          if (event.messageId) {
+            await setMessageReaction(chatId, event.messageId, "🤔");
+          }
 
           try {
             if (!schema) {
@@ -425,13 +427,17 @@ Commands:
               schema,
             });
 
+            // Remove thinking reaction
+            if (event.messageId) {
+              await setMessageReaction(chatId, event.messageId, null);
+            }
+
             state = "awaiting_confirmation";
             const suggestionText = formatSuggestedAction(currentAction);
             const hasClarifications = currentAction.clarificationsNeeded.length > 0;
 
-            await editMessage({
+            lastBotMessageId = await sendMessage({
               chatId,
-              messageId: lastBotMessageId,
               text: suggestionText,
               parseMode: "Markdown",
               replyMarkup: {
@@ -445,12 +451,16 @@ Commands:
               confidence: currentAction.confidence,
             });
           } catch (error) {
+            // Remove thinking reaction on error
+            if (event.messageId) {
+              await setMessageReaction(chatId, event.messageId, null);
+            }
+            
             const errorMsg = error instanceof Error ? error.message : String(error);
             logger.error("AI analysis failed", { userId, error: errorMsg });
 
-            await editMessage({
+            await sendMessage({
               chatId,
-              messageId: lastBotMessageId,
               text: `❌ AI analysis failed: ${errorMsg.substring(0, 200)}`,
             });
             state = "idle";
@@ -461,10 +471,11 @@ Commands:
         // Handle instruction after /done without args
         if (state === "awaiting_instruction") {
           state = "processing_ai";
-          lastBotMessageId = await sendMessage({
-            chatId,
-            text: "🤖 Analyzing...",
-          });
+          
+          // React to show we're thinking
+          if (event.messageId) {
+            await setMessageReaction(chatId, event.messageId, "🤔");
+          }
 
           try {
             if (!schema) {
@@ -484,13 +495,17 @@ Commands:
               schema,
             });
 
+            // Remove thinking reaction
+            if (event.messageId) {
+              await setMessageReaction(chatId, event.messageId, null);
+            }
+
             state = "awaiting_confirmation";
             const suggestionText = formatSuggestedAction(currentAction);
             const hasClarifications = currentAction.clarificationsNeeded.length > 0;
 
-            await editMessage({
+            lastBotMessageId = await sendMessage({
               chatId,
-              messageId: lastBotMessageId,
               text: suggestionText,
               parseMode: "Markdown",
               replyMarkup: {
@@ -498,10 +513,14 @@ Commands:
               },
             });
           } catch (error) {
+            // Remove thinking reaction on error
+            if (event.messageId) {
+              await setMessageReaction(chatId, event.messageId, null);
+            }
+            
             const errorMsg = error instanceof Error ? error.message : String(error);
-            await editMessage({
+            await sendMessage({
               chatId,
-              messageId: lastBotMessageId,
               text: `❌ AI analysis failed: ${errorMsg.substring(0, 200)}`,
             });
             state = "idle";

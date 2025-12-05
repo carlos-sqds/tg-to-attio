@@ -178,7 +178,7 @@ export async function POST(request: NextRequest) {
         
         // For /done, send as text_message to preserve the instruction
         if (command === "/done") {
-          const event: TelegramEvent = { type: "text_message", text };
+          const event: TelegramEvent = { type: "text_message", text, messageId: msg.message_id };
           const success = await tryResumeWorkflow(userId, event);
           if (!success) {
             await sendTelegramMessage(chatId, "Please send /start first to begin.");
@@ -186,7 +186,7 @@ export async function POST(request: NextRequest) {
           return NextResponse.json({ ok: true });
         }
         
-        const event: TelegramEvent = { type: "command", command };
+        const event: TelegramEvent = { type: "command", command, messageId: msg.message_id };
         const success = await tryResumeWorkflow(userId, event);
         if (!success) {
           await sendTelegramMessage(chatId, "Please send /start first to begin.");

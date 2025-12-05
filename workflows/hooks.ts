@@ -6,6 +6,7 @@ export interface TelegramMessageEvent {
   text?: string;
   command?: string;
   forwardedMessage?: ForwardedMessageData;
+  messageId?: number;
 }
 
 export interface TelegramCallbackEvent {

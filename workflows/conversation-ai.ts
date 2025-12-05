@@ -135,9 +135,24 @@ Commands:
             );
 
             if (result.success) {
-              const successMsg = result.recordUrl
-                ? `✅ Created successfully!\n\n🔗 [View in Attio](${result.recordUrl})`
-                : "✅ Created successfully!";
+              let successMsg = "✅ Created successfully!";
+              
+              // Add link to main record
+              if (result.recordUrl) {
+                successMsg += `\n\n🔗 [View in Attio](${result.recordUrl})`;
+              }
+              
+              // Add links to created prerequisites (companies, people)
+              if (result.createdPrerequisites && result.createdPrerequisites.length > 0) {
+                successMsg += "\n\n📦 Also created:";
+                for (const prereq of result.createdPrerequisites) {
+                  if (prereq.url) {
+                    successMsg += `\n• [${prereq.name}](${prereq.url})`;
+                  } else {
+                    successMsg += `\n• ${prereq.name}`;
+                  }
+                }
+              }
 
               if (lastBotMessageId) {
                 await editMessage({

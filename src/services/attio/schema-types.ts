@@ -139,6 +139,7 @@ export interface ActionResult {
   recordUrl?: string;
   noteId?: string;
   error?: string;
+  createdPrerequisites?: Array<{ name: string; url?: string }>;
 }
 
 export type SuggestedAction = z.infer<typeof SuggestedActionSchema>;

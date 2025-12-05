@@ -409,6 +409,8 @@ export async function createTask(input: CreateTaskInput): Promise<ActionResult> 
     return {
       success: true,
       recordId: response.data.id.task_id,
+      // Construct task URL - Attio doesn't return web_url for tasks
+      recordUrl: `https://app.attio.com/tasks`,
     };
   } catch (error) {
     return {
@@ -582,6 +584,7 @@ export async function executeActionWithNote(
   
   // Track created prerequisite records for linking
   const createdRecords: Record<string, string> = {}; // intent -> recordId
+  const createdPrerequisites: Array<{ name: string; url?: string }> = [];
 
   const data = action.extractedData;
 
@@ -599,26 +602,30 @@ export async function executeActionWithNote(
       
       switch (prereq.intent) {
         case "create_company": {
-          console.log("[ACTION] Creating prerequisite company:", prereq.extractedData.name);
+          const companyName = String(prereq.extractedData.name || "");
+          console.log("[ACTION] Creating prerequisite company:", companyName);
           prereqResult = await createCompany({
-            name: String(prereq.extractedData.name || ""),
+            name: companyName,
             domain: String(prereq.extractedData.domains || prereq.extractedData.domain || ""),
             location: String(prereq.extractedData.primary_location || ""),
           });
           console.log("[ACTION] Company creation result:", prereqResult);
           if (prereqResult.success && prereqResult.recordId) {
             createdRecords["company"] = prereqResult.recordId;
+            createdPrerequisites.push({ name: `🏢 ${companyName}`, url: prereqResult.recordUrl });
           }
           break;
         }
         case "create_person": {
+          const personName = String(prereq.extractedData.name || "");
           prereqResult = await createPerson({
-            name: String(prereq.extractedData.name || ""),
+            name: personName,
             email: String(prereq.extractedData.email || ""),
             company: createdRecords["company"] ? undefined : String(prereq.extractedData.company || ""),
           });
           if (prereqResult.success && prereqResult.recordId) {
             createdRecords["person"] = prereqResult.recordId;
+            createdPrerequisites.push({ name: `👤 ${personName}`, url: prereqResult.recordUrl });
           }
           break;
         }
@@ -799,6 +806,11 @@ export async function executeActionWithNote(
       content: messagesContent,
     });
     result.noteId = noteResult.noteId;
+  }
+
+  // Include created prerequisites in result
+  if (createdPrerequisites.length > 0) {
+    result.createdPrerequisites = createdPrerequisites;
   }
 
   return result;

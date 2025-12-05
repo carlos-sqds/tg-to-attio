@@ -34,6 +34,7 @@ export async function analyzeIntent(context: AIContext): Promise<SuggestedAction
 /**
  * Workflow step for handling clarification responses
  * Takes user's clarification and updates the suggested action
+ * Understands additional instructions like "create if needed"
  */
 export async function processClarification(
   previousAction: SuggestedAction,
@@ -51,9 +52,20 @@ export async function processClarification(
   const prompt = `Previous suggested action:
 ${JSON.stringify(previousAction, null, 2)}
 
-User clarified the "${clarificationField}" field with: "${userResponse}"
+User response for "${clarificationField}" field: "${userResponse}"
 
-Update the suggested action with this clarification and remove it from clarificationsNeeded.`;
+IMPORTANT: The user's response may contain:
+1. A simple value (e.g., "john@example.com")
+2. A value with additional instructions (e.g., "TechCorp - create company if it doesn't exist")
+3. Instructions to change the action type (e.g., "actually, create a deal instead")
+4. Multiple pieces of information (e.g., "Sarah Johnson, CEO at TechCorp")
+
+Interpret the user's intent and update the suggested action accordingly:
+- If they mention creating something that doesn't exist, add a clarification asking if they want to create it first
+- If they provide additional data, incorporate it into extractedData
+- If they want to change the action type, update the intent
+- Remove the clarification for "${clarificationField}" from clarificationsNeeded if it's been answered
+- Keep other pending clarifications`;
 
   const { object } = await generateObject({
     model: gateway(DEFAULT_MODEL),

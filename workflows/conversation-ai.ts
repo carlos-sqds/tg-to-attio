@@ -12,7 +12,7 @@ import {
   buildEditFieldKeyboard,
   formatSuggestedAction,
 } from "./steps/telegram";
-import { analyzeIntent } from "./steps/ai";
+import { analyzeIntent, processClarification } from "./steps/ai";
 import { executeActionWithNote } from "./steps/attio-actions";
 import { fetchFullSchema } from "./steps/attio-schema";
 import { formatMessagesForSingleNote } from "@/src/services/attio/formatters";
@@ -559,52 +559,91 @@ Commands:
           continue;
         }
 
-        // Handle clarification text response
-        if (state === "awaiting_clarification" && currentAction) {
+        // Handle clarification text response - use AI to interpret
+        if (state === "awaiting_clarification" && currentAction && schema) {
           const clarification = currentAction.clarificationsNeeded[currentClarificationIndex];
-          currentAction.extractedData[clarification.field] = text;
-          currentAction.clarificationsNeeded.splice(currentClarificationIndex, 1);
+          
+          // Show processing indicator
+          lastBotMessageId = await sendMessage({
+            chatId,
+            text: "🤖 Processing your response...",
+          });
 
-          if (currentAction.clarificationsNeeded.length > 0) {
-            const nextClarification = currentAction.clarificationsNeeded[0];
-            lastBotMessageId = await sendMessage({
-              chatId,
-              text: `❓ ${nextClarification.question}`,
-              replyMarkup: {
-                inline_keyboard: buildClarificationKeyboard(nextClarification.options),
-              },
-            });
-          } else {
+          try {
+            // Use AI to interpret the response (handles "create if needed" etc.)
+            currentAction = await processClarification(
+              currentAction,
+              clarification.field,
+              text,
+              schema
+            );
+
             state = "awaiting_confirmation";
             const suggestionText = formatSuggestedAction(currentAction);
+            const hasClarifications = currentAction.clarificationsNeeded.length > 0;
 
-            lastBotMessageId = await sendMessage({
+            await editMessage({
               chatId,
+              messageId: lastBotMessageId,
               text: suggestionText,
               parseMode: "Markdown",
               replyMarkup: {
-                inline_keyboard: buildAISuggestionKeyboard(false),
+                inline_keyboard: buildAISuggestionKeyboard(hasClarifications),
               },
+            });
+          } catch (error) {
+            const errorMsg = error instanceof Error ? error.message : String(error);
+            await editMessage({
+              chatId,
+              messageId: lastBotMessageId,
+              text: `❌ Failed to process: ${errorMsg.substring(0, 200)}`,
             });
           }
           continue;
         }
 
-        // Handle edit value response
-        if (state === "awaiting_edit_value" && currentAction && editingField) {
-          currentAction.extractedData[editingField] = text;
+        // Handle edit value response - use AI to interpret
+        if (state === "awaiting_edit_value" && currentAction && editingField && schema) {
+          const fieldToEdit = editingField;
           editingField = null;
-          state = "awaiting_confirmation";
 
-          const suggestionText = formatSuggestedAction(currentAction);
+          // Show processing indicator
           lastBotMessageId = await sendMessage({
             chatId,
-            text: suggestionText,
-            parseMode: "Markdown",
-            replyMarkup: {
-              inline_keyboard: buildAISuggestionKeyboard(false),
-            },
+            text: "🤖 Processing your response...",
           });
+
+          try {
+            // Use AI to interpret the response (handles additional instructions)
+            currentAction = await processClarification(
+              currentAction,
+              fieldToEdit,
+              text,
+              schema
+            );
+
+            state = "awaiting_confirmation";
+            const suggestionText = formatSuggestedAction(currentAction);
+            const hasClarifications = currentAction.clarificationsNeeded.length > 0;
+
+            await editMessage({
+              chatId,
+              messageId: lastBotMessageId,
+              text: suggestionText,
+              parseMode: "Markdown",
+              replyMarkup: {
+                inline_keyboard: buildAISuggestionKeyboard(hasClarifications),
+              },
+            });
+          } catch (error) {
+            const errorMsg = error instanceof Error ? error.message : String(error);
+            await editMessage({
+              chatId,
+              messageId: lastBotMessageId,
+              text: `❌ Failed to process: ${errorMsg.substring(0, 200)}`,
+            });
+            state = "awaiting_confirmation";
+          }
           continue;
         }
 

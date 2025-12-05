@@ -281,14 +281,14 @@ export interface CreateTaskInput {
 }
 
 // Convert Date to Attio's expected format (nanosecond precision)
-function toAttioDateFormat(date: Date): string {
+export function toAttioDateFormat(date: Date): string {
   // Attio expects: "2023-01-01T15:00:00.000000000Z" (9 decimal places)
   const iso = date.toISOString(); // "2023-01-01T15:00:00.000Z"
   // Replace .000Z with .000000000Z
   return iso.replace(/\.(\d{3})Z$/, ".$1000000Z");
 }
 
-function parseDeadline(deadline: unknown): string | null {
+export function parseDeadline(deadline: unknown): string | null {
   if (!deadline) return null;
   
   // Convert to string if needed

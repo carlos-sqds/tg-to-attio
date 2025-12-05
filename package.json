@@ -8,7 +8,12 @@
     "build": "next build",
     "start": "next start",
     "type-check": "tsc --noEmit",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "vitest",
+    "test:run": "vitest run",
+    "test:ai": "vitest run tests/ai",
+    "test:ai:smoke": "vitest run tests/ai/intent.test.ts -t 'Smoke'",
+    "test:attio": "vitest run tests/attio",
+    "test:schema": "tsx scripts/test-schema.ts"
   },
   "keywords": [
     "telegram",
@@ -19,11 +24,15 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@ai-sdk/gateway": "^2.0.18",
+    "ai": "^5.0.106",
     "dotenv": "^17.2.3",
     "next": "^16.0.7",
     "react": "^19.2.1",
     "react-dom": "^19.2.1",
-    "workflow": "^4.0.1-beta.26"
+    "vitest": "^4.0.15",
+    "workflow": "^4.0.1-beta.26",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@types/node": "^24.10.1",

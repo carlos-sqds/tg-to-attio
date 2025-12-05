@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { start } from "workflow/api";
 import { logger } from "@/src/lib/logger";
 import { telegramHook, type TelegramEvent } from "@/workflows/hooks";
-import { conversationWorkflow } from "@/workflows/conversation";
+import { conversationWorkflowAI } from "@/workflows/conversation-ai";
 import type { ForwardedMessageData } from "@/src/types";
 
 const BOT_TOKEN = process.env.BOT_TOKEN!;
@@ -152,8 +152,8 @@ export async function POST(request: NextRequest) {
       // /start - Start a new workflow (workflow will send welcome)
       if (text === "/start") {
         try {
-          const run = await start(conversationWorkflow, [userId, chatId]);
-          logger.info("Started new workflow", { userId, runId: run.runId });
+          const run = await start(conversationWorkflowAI, [userId, chatId]);
+          logger.info("Started new AI workflow", { userId, runId: run.runId });
         } catch (error) {
           logger.error("Failed to start workflow", { userId, error: String(error) });
           await sendTelegramMessage(chatId, "Failed to start. Please try again.");

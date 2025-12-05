@@ -55,6 +55,7 @@ next-env.d.ts
 .cache/
 temp/
 tmp/
+schema-dump.json
 *.pid
 *.seed
 *.pid.lock

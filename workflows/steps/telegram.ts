@@ -132,3 +132,155 @@ export function buildConfirmationKeyboard(): InlineKeyboardButton[][] {
     ],
   ];
 }
+
+// ============ AI SUGGESTION KEYBOARDS ============
+
+export function buildAISuggestionKeyboard(hasClarifications: boolean): InlineKeyboardButton[][] {
+  const keyboard: InlineKeyboardButton[][] = [];
+
+  if (hasClarifications) {
+    keyboard.push([
+      { text: "✅ Create anyway", callback_data: "ai_confirm" },
+      { text: "💬 Answer questions", callback_data: "ai_clarify" },
+    ]);
+  } else {
+    keyboard.push([
+      { text: "✅ Create", callback_data: "ai_confirm" },
+      { text: "✏️ Edit", callback_data: "ai_edit" },
+    ]);
+  }
+
+  keyboard.push([{ text: "❌ Cancel", callback_data: "cancel" }]);
+
+  return keyboard;
+}
+
+export function buildClarificationKeyboard(
+  options?: string[]
+): InlineKeyboardButton[][] {
+  const keyboard: InlineKeyboardButton[][] = [];
+
+  if (options && options.length > 0) {
+    for (const option of options.slice(0, 5)) {
+      keyboard.push([{ text: option, callback_data: `clarify_option:${option}` }]);
+    }
+  }
+
+  keyboard.push([
+    { text: "⌨️ Type answer", callback_data: "clarify_type" },
+    { text: "⏭️ Skip", callback_data: "clarify_skip" },
+  ]);
+  keyboard.push([{ text: "❌ Cancel", callback_data: "cancel" }]);
+
+  return keyboard;
+}
+
+export function buildEditFieldKeyboard(
+  fields: string[]
+): InlineKeyboardButton[][] {
+  const keyboard: InlineKeyboardButton[][] = [];
+
+  // Show up to 3 fields per row
+  for (let i = 0; i < fields.length; i += 2) {
+    const row: InlineKeyboardButton[] = [];
+    row.push({ text: fields[i], callback_data: `edit_field:${fields[i]}` });
+    if (fields[i + 1]) {
+      row.push({ text: fields[i + 1], callback_data: `edit_field:${fields[i + 1]}` });
+    }
+    keyboard.push(row);
+  }
+
+  keyboard.push([
+    { text: "✅ Done editing", callback_data: "ai_confirm" },
+    { text: "❌ Cancel", callback_data: "cancel" },
+  ]);
+
+  return keyboard;
+}
+
+export function buildSearchResultSelectionKeyboard(
+  results: Array<{ id: string; name: string; extra?: string }>
+): InlineKeyboardButton[][] {
+  const keyboard: InlineKeyboardButton[][] = [];
+
+  for (const result of results.slice(0, 5)) {
+    const label = result.extra ? `${result.name} (${result.extra})` : result.name;
+    keyboard.push([{ text: label, callback_data: `select_record:${result.id}` }]);
+  }
+
+  keyboard.push([
+    { text: "➕ Create new", callback_data: "create_new" },
+    { text: "❌ Cancel", callback_data: "cancel" },
+  ]);
+
+  return keyboard;
+}
+
+// ============ MESSAGE FORMATTERS ============
+
+export function formatSuggestedAction(action: {
+  intent: string;
+  extractedData: Record<string, unknown>;
+  noteTitle: string;
+  clarificationsNeeded: Array<{ field: string; question: string }>;
+  confidence: number;
+}): string {
+  const intentLabels: Record<string, string> = {
+    create_person: "👤 Create Person",
+    create_company: "🏢 Create Company",
+    create_deal: "💰 Create Deal",
+    create_task: "📋 Create Task",
+    add_note: "📝 Add Note",
+    add_to_list: "📋 Add to List",
+  };
+
+  let text = `**${intentLabels[action.intent] || action.intent}**\n\n`;
+
+  // Format extracted data
+  const fieldLabels: Record<string, string> = {
+    name: "Name",
+    email_addresses: "Email",
+    phone_numbers: "Phone",
+    company: "Company",
+    domains: "Domain",
+    primary_location: "Location",
+    value: "Value",
+    stage: "Stage",
+    content: "Task",
+    assignee: "Assignee",
+    deadline: "Deadline",
+    description: "Description",
+    associated_company: "Company",
+  };
+
+  for (const [key, value] of Object.entries(action.extractedData)) {
+    if (value && key !== "noteTitle") {
+      const label = fieldLabels[key] || key;
+      let displayValue = value;
+
+      // Handle nested objects like { amount: 50000, currency: "USD" }
+      if (typeof value === "object" && value !== null) {
+        const obj = value as Record<string, unknown>;
+        if (obj.amount !== undefined && obj.amount !== null) {
+          displayValue = `$${Number(obj.amount).toLocaleString()} ${obj.currency || "USD"}`;
+        } else {
+          displayValue = JSON.stringify(value);
+        }
+      }
+
+      text += `• **${label}:** ${displayValue}\n`;
+    }
+  }
+
+  text += `\n📎 Note: "${action.noteTitle}"`;
+
+  // Show clarifications needed
+  if (action.clarificationsNeeded.length > 0) {
+    text += `\n\n⚠️ **Questions:**\n`;
+    for (const c of action.clarificationsNeeded) {
+      text += `• ${c.question}\n`;
+    }
+  }
+
+  return text;
+}

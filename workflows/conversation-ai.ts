@@ -1,4 +1,5 @@
 import { logger } from "@/src/lib/logger";
+import { BUILD_INFO } from "@/src/lib/build-info";
 import type { ForwardedMessageData } from "@/src/types";
 import type { SuggestedAction, AttioSchema } from "@/src/services/attio/schema-types";
 import { telegramHook, type TelegramEvent } from "./hooks";
@@ -38,6 +39,7 @@ export async function conversationWorkflowAI(userId: number, chatId: number) {
   let currentClarificationIndex = 0;
   let editingField: string | null = null;
   let currentInstruction: string | null = null; // Store for date extraction
+  const sessionStartTime = new Date();
 
   // Send welcome message
   await sendMessage({
@@ -59,6 +61,7 @@ Commands:
 /done <instruction> - Process messages with AI
 /clear - Clear message queue
 /cancel - Cancel current operation
+/session - Show version & session info
 /help - Show this message`,
   });
 
@@ -368,7 +371,43 @@ Commands:
 /done remind X to Y - Create a task
 
 /clear - Clear queued messages
-/cancel - Cancel current operation`,
+/cancel - Cancel current operation
+/session - Show version info`,
+            parseMode: "Markdown",
+          });
+          continue;
+        }
+
+        if (command === "/session") {
+          const now = new Date();
+          const sessionAge = Math.floor((now.getTime() - sessionStartTime.getTime()) / 1000);
+          const sessionAgeStr = sessionAge < 60 
+            ? `${sessionAge}s` 
+            : sessionAge < 3600 
+              ? `${Math.floor(sessionAge / 60)}m ${sessionAge % 60}s`
+              : `${Math.floor(sessionAge / 3600)}h ${Math.floor((sessionAge % 3600) / 60)}m`;
+
+          const buildDate = new Date(BUILD_INFO.buildTime);
+          const buildAge = Math.floor((now.getTime() - buildDate.getTime()) / 1000 / 60);
+          const buildAgeStr = buildAge < 60 
+            ? `${buildAge}m ago` 
+            : buildAge < 1440 
+              ? `${Math.floor(buildAge / 60)}h ago`
+              : `${Math.floor(buildAge / 1440)}d ago`;
+
+          await sendMessage({
+            chatId,
+            text: `📊 **Session Info**
+
+**Version:** \`${BUILD_INFO.commitHashShort}\`
+**Built:** ${buildDate.toLocaleString()} (${buildAgeStr})
+
+**Session started:** ${sessionStartTime.toLocaleString()}
+**Session age:** ${sessionAgeStr}
+**Messages queued:** ${messageQueue.length}
+**State:** ${state}
+
+Send /start to create a fresh session.`,
             parseMode: "Markdown",
           });
           continue;

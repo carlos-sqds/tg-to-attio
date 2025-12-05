@@ -335,10 +335,11 @@ Which company are these messages for?`;
             replyMarkup: { inline_keyboard: buildSearchResultsKeyboard(searchResults) },
           });
         } catch (error) {
-          console.error("[WORKFLOW] Search failed:", error instanceof Error ? error.message : String(error));
+          const errorMsg = error instanceof Error ? error.message : String(error);
+          console.error("[WORKFLOW] Search failed:", errorMsg);
           await sendMessage({
             chatId,
-            text: "❌ Search failed. Please try again.",
+            text: `❌ Search failed: ${errorMsg.substring(0, 200)}`,
           });
         }
         continue;

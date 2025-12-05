@@ -15,6 +15,9 @@ async function attioRequest<T>(
   options: RequestInit = {}
 ): Promise<T> {
   const url = `${ATTIO_BASE_URL}${endpoint}`;
+  
+  console.log("[ATTIO_REQUEST] Starting request to:", endpoint);
+  console.log("[ATTIO_REQUEST] API key exists:", !!config.attioApiKey);
 
   const headers = {
     Authorization: `Bearer ${config.attioApiKey}`,
@@ -22,22 +25,25 @@ async function attioRequest<T>(
     ...options.headers,
   };
 
-  const response = await fetch(url, {
-    ...options,
-    headers,
-  });
-
-  if (!response.ok) {
-    const errorBody = await response.text();
-    logger.error("Attio API error", {
-      endpoint,
-      status: response.status,
-      body: errorBody,
+  try {
+    const response = await fetch(url, {
+      ...options,
+      headers,
     });
-    throw new Error(`Attio API error: ${response.status} ${response.statusText}`);
-  }
 
-  return response.json() as Promise<T>;
+    console.log("[ATTIO_REQUEST] Response status:", response.status);
+
+    if (!response.ok) {
+      const errorBody = await response.text();
+      console.error("[ATTIO_REQUEST] Error response:", response.status, errorBody);
+      throw new Error(`Attio API error: ${response.status} ${response.statusText} - ${errorBody}`);
+    }
+
+    return response.json() as Promise<T>;
+  } catch (error) {
+    console.error("[ATTIO_REQUEST] Fetch error:", error instanceof Error ? error.message : String(error));
+    throw error;
+  }
 }
 
 export async function searchCompanies(query: string): Promise<CompanySearchResult[]> {

@@ -280,6 +280,14 @@ export interface CreateTaskInput {
   linkedRecordObject?: string; // "people", "companies", "deals"
 }
 
+// Convert Date to Attio's expected format (nanosecond precision)
+function toAttioDateFormat(date: Date): string {
+  // Attio expects: "2023-01-01T15:00:00.000000000Z" (9 decimal places)
+  const iso = date.toISOString(); // "2023-01-01T15:00:00.000Z"
+  // Replace .000Z with .000000000Z
+  return iso.replace(/\.(\d{3})Z$/, ".$1000000Z");
+}
+
 function parseDeadline(deadline: unknown): string | null {
   if (!deadline) return null;
   
@@ -293,14 +301,14 @@ function parseDeadline(deadline: unknown): string | null {
   // Handle relative dates first (before trying Date parsing)
   if (lowerDeadline.includes("tomorrow")) {
     now.setDate(now.getDate() + 1);
-    now.setHours(9, 0, 0, 0); // 9 AM
-    return now.toISOString();
+    now.setHours(9, 0, 0, 0);
+    return toAttioDateFormat(now);
   }
   
   if (lowerDeadline.includes("next week") || lowerDeadline === "1 week" || lowerDeadline === "a week") {
     now.setDate(now.getDate() + 7);
     now.setHours(9, 0, 0, 0);
-    return now.toISOString();
+    return toAttioDateFormat(now);
   }
   
   // Handle "next wednesday", "next monday", etc.
@@ -313,7 +321,7 @@ function parseDeadline(deadline: unknown): string | null {
     if (daysUntil <= 0) daysUntil += 7;
     now.setDate(now.getDate() + daysUntil);
     now.setHours(9, 0, 0, 0);
-    return now.toISOString();
+    return toAttioDateFormat(now);
   }
   
   // Handle "in X days" or "X days"
@@ -321,7 +329,7 @@ function parseDeadline(deadline: unknown): string | null {
   if (daysMatch) {
     now.setDate(now.getDate() + parseInt(daysMatch[1], 10));
     now.setHours(9, 0, 0, 0);
-    return now.toISOString();
+    return toAttioDateFormat(now);
   }
   
   // Handle "end of week", "eow"
@@ -329,7 +337,7 @@ function parseDeadline(deadline: unknown): string | null {
     const daysUntilFriday = (5 - now.getDay() + 7) % 7 || 7;
     now.setDate(now.getDate() + daysUntilFriday);
     now.setHours(17, 0, 0, 0);
-    return now.toISOString();
+    return toAttioDateFormat(now);
   }
   
   // Only try ISO date parsing for strings that look like dates (YYYY-MM-DD format)
@@ -337,7 +345,7 @@ function parseDeadline(deadline: unknown): string | null {
   if (isoMatch) {
     const isoDate = new Date(deadlineStr);
     if (!isNaN(isoDate.getTime())) {
-      return isoDate.toISOString();
+      return toAttioDateFormat(isoDate);
     }
   }
   

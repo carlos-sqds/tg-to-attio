@@ -570,6 +570,7 @@ export async function executeActionWithNote(
       intent: string;
       extractedData: Record<string, unknown>;
     }>;
+    originalInstruction?: string; // User's raw instruction for date extraction
   },
   messagesContent: string
 ): Promise<ActionResult> {
@@ -585,17 +586,26 @@ export async function executeActionWithNote(
   const data = action.extractedData;
 
   // Execute prerequisite actions first
+  console.log("[ACTION] Checking prerequisiteActions:", {
+    hasPrereqs: !!action.prerequisiteActions,
+    count: action.prerequisiteActions?.length || 0,
+    prereqs: action.prerequisiteActions
+  });
+  
   if (action.prerequisiteActions && action.prerequisiteActions.length > 0) {
+    console.log("[ACTION] Executing prerequisite actions...");
     for (const prereq of action.prerequisiteActions) {
       let prereqResult: ActionResult | null = null;
       
       switch (prereq.intent) {
         case "create_company": {
+          console.log("[ACTION] Creating prerequisite company:", prereq.extractedData.name);
           prereqResult = await createCompany({
             name: String(prereq.extractedData.name || ""),
             domain: String(prereq.extractedData.domains || prereq.extractedData.domain || ""),
             location: String(prereq.extractedData.primary_location || ""),
           });
+          console.log("[ACTION] Company creation result:", prereqResult);
           if (prereqResult.success && prereqResult.recordId) {
             createdRecords["company"] = prereqResult.recordId;
           }
@@ -688,14 +698,27 @@ export async function executeActionWithNote(
         linkedRecordObject = "people";
       }
 
-      // Check all possible field names the AI might use for deadline
-      const deadlineValue = 
-        data.deadline_at || 
-        data.due_date || 
-        data.deadline ||
-        (data as Record<string, unknown>)["due date"] ||
-        data.due ||
-        data.date;
+      // Try to extract deadline from original instruction first (AI often computes dates wrong)
+      // Our parseDeadline handles "next wednesday", "tomorrow", etc. correctly
+      let deadlineValue: unknown = null;
+      if (action.originalInstruction) {
+        const instructionDeadline = parseDeadline(action.originalInstruction);
+        if (instructionDeadline) {
+          console.log("[TASK] Extracted deadline from instruction:", instructionDeadline);
+          deadlineValue = action.originalInstruction; // Pass raw instruction, parseDeadline will handle it in createTask
+        }
+      }
+      
+      // Fall back to AI's extracted deadline if we couldn't extract from instruction
+      if (!deadlineValue) {
+        deadlineValue = 
+          data.deadline_at || 
+          data.due_date || 
+          data.deadline ||
+          (data as Record<string, unknown>)["due date"] ||
+          data.due ||
+          data.date;
+      }
 
       result = await createTask({
         content: String(data.content || data.title || data.task || ""),

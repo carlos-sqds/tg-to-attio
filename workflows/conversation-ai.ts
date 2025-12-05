@@ -37,6 +37,7 @@ export async function conversationWorkflowAI(userId: number, chatId: number) {
   let state: ConversationState = "idle";
   let currentClarificationIndex = 0;
   let editingField: string | null = null;
+  let currentInstruction: string | null = null; // Store for date extraction
 
   // Send welcome message
   await sendMessage({
@@ -78,7 +79,7 @@ Commands:
     });
   }
 
-  const events = telegramHook.create({ token: `ai3-${userId}` });
+  const events = telegramHook.create({ token: `ai4-${userId}` });
 
   for await (const event of events) {
     try {
@@ -128,6 +129,7 @@ Commands:
                 targetObject: currentAction.targetObject,
                 targetList: currentAction.targetList,
                 prerequisiteActions: currentAction.prerequisiteActions,
+                originalInstruction: currentInstruction || undefined,
               },
               formatted.content
             );
@@ -384,6 +386,7 @@ Commands:
         if (text.startsWith("/done")) {
           console.log("[WORKFLOW] Processing /done command");
           const instruction = text.replace("/done", "").trim();
+          currentInstruction = instruction; // Store for later use in date extraction
 
           if (messageQueue.length === 0 && !instruction) {
             await sendMessage({

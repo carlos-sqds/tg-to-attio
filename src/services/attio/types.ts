@@ -41,7 +41,9 @@ export interface CreateNoteInput {
 export interface SearchCompaniesInput {
   filter?: {
     name?: {
-      $contains?: string;
+      value?: {
+        $contains?: string;
+      };
     };
   };
   sorts?: Array<{

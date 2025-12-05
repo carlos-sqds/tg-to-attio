@@ -61,7 +61,9 @@ export async function searchCompanies(query: string): Promise<CompanySearchResul
   const searchInput: SearchCompaniesInput = {
     filter: {
       name: {
-        $contains: query,
+        value: {
+          $contains: query,
+        },
       },
     },
     limit: 10,

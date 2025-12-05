@@ -36,8 +36,17 @@ async function telegramRequest<T>(method: string, body: Record<string, unknown>)
 
   if (!response.ok) {
     const errorBody = await response.text();
-    logger.error("Telegram API error", { method, status: response.status, body: errorBody });
-    throw new Error(`Telegram API error: ${response.status}`);
+    logger.error("Telegram API error", { 
+      method, 
+      status: response.status, 
+      error: errorBody,
+      requestBody: method === "editMessageText" ? { 
+        textLength: String(body.text || "").length,
+        textPreview: String(body.text || "").substring(0, 100),
+        hasKeyboard: !!body.reply_markup 
+      } : undefined
+    });
+    throw new Error(`Telegram API error: ${response.status} - ${errorBody}`);
   }
 
   return response.json() as Promise<T>;
@@ -291,8 +300,7 @@ export function formatSuggestedAction(action: {
   // Skip these internal fields
   const skipFields = new Set(["noteTitle", "linked_record_id", "linked_record_object", "assignee_email", "assignee_id"]);
 
-  let text = `${intentLabels[action.intent] || action.intent}\n`;
-  text += "━━━━━━━━━━━━━━━━━━━━\n";
+  let text = `${intentLabels[action.intent] || action.intent}\n\n`;
 
   // Collect and sort fields
   const fields: Array<{ key: string; label: string; value: string; priority: number }> = [];

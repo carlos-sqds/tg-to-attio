@@ -78,7 +78,7 @@ Commands:
     });
   }
 
-  const events = telegramHook.create({ token: `ai-${userId}` });
+  const events = telegramHook.create({ token: `ai2-${userId}` });
 
   for await (const event of events) {
     try {

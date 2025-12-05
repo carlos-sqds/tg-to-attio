@@ -62,7 +62,10 @@ Analyze the provided messages and instruction to:
 - For "create_person": Extract name, email, phone, company from messages
 - For "create_company": Extract company name, domain, location
 - For "create_deal": Extract deal name, value, associated company/person
-- For "create_task": Extract task content, deadline, assignee
+- For "create_task": Use these exact field names:
+  - content: The task description
+  - deadline_at: Due date in ISO format (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SSZ)
+  - assignee_email: Email of person to assign
 - For "add_to_list": Identify which list and which record
 - For "add_note": Identify the parent record (company/person)
 

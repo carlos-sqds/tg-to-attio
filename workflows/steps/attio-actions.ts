@@ -377,24 +377,23 @@ export async function createTask(input: CreateTaskInput): Promise<ActionResult> 
     });
   }
 
-  const data: Record<string, unknown> = {
-    content: input.content,
-    format: "plaintext",
-    is_completed: false,
-    linked_records: linkedRecords,
-    assignees: assignees,
-  };
-
-  // Parse and validate deadline
+  // Parse deadline - Attio requires deadline_at field (can be null)
   const parsedDeadline = parseDeadline(input.deadline);
   console.log("[TASK] Deadline parsing:", { 
     input: input.deadline, 
     inputType: typeof input.deadline,
     parsed: parsedDeadline 
   });
-  if (parsedDeadline) {
-    data.deadline_at = parsedDeadline;
-  }
+
+  const data: Record<string, unknown> = {
+    content: input.content,
+    format: "plaintext",
+    is_completed: false,
+    deadline_at: parsedDeadline, // REQUIRED by Attio API - null is valid
+    linked_records: linkedRecords,
+    assignees: assignees,
+  };
+
   console.log("[TASK] Sending to Attio:", JSON.stringify(data, null, 2));
 
   try {
@@ -689,10 +688,19 @@ export async function executeActionWithNote(
         linkedRecordObject = "people";
       }
 
+      // Check all possible field names the AI might use for deadline
+      const deadlineValue = 
+        data.deadline_at || 
+        data.due_date || 
+        data.deadline ||
+        (data as Record<string, unknown>)["due date"] ||
+        data.due ||
+        data.date;
+
       result = await createTask({
-        content: String(data.content || ""),
-        assigneeEmail: String(data.assignee_email || ""),
-        deadline: data.deadline_at || data.due_date || data.deadline, // AI may use different field names
+        content: String(data.content || data.title || data.task || ""),
+        assigneeEmail: String(data.assignee_email || data.assignee || ""),
+        deadline: deadlineValue,
         linkedRecordId,
         linkedRecordObject,
       });

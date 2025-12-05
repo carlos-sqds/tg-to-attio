@@ -7,7 +7,7 @@ import {
 } from "@/src/services/attio/schema-types";
 import { buildSystemPrompt, buildUserPrompt } from "./prompts";
 
-const DEFAULT_MODEL = "moonshotai/kimi-k2-thinking";
+const DEFAULT_MODEL = "anthropic/claude-3-5-sonnet-20241022";
 
 export interface AnalyzeIntentOptions {
   model?: string;

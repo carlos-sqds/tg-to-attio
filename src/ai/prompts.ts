@@ -59,13 +59,28 @@ Analyze the provided messages and instruction to:
 
 ## Guidelines
 
-- For "create_person": Extract name, email, phone, company from messages
+IMPORTANT: ALL records (people, deals, tasks) MUST be linked to a company.
+- Always try to infer the company from context (chat name, mentioned companies, sender info, email domain)
+- If a company is inferred but may not exist, add it as a prerequisiteAction with intent "create_company"
+- If no company can be inferred at all, add a clarification asking which company the record should be linked to
+- Always include "associated_company" field in extractedData for people, deals, and tasks
+
+- For "create_person": 
+  - Extract name, email, phone from messages
+  - associated_company: Company name (REQUIRED - infer from email domain, chat name, or context)
+  
 - For "create_company": Extract company name, domain, location
-- For "create_deal": Extract deal name, value, associated company/person
-- For "create_task": Use these exact field names:
+
+- For "create_deal": 
+  - Extract deal name, value
+  - associated_company: Company name (REQUIRED - infer from context)
+  
+- For "create_task":
   - content: The task description (required)
   - deadline_at: Pass the deadline EXACTLY as mentioned (e.g., "next wednesday", "tomorrow", "2025-12-15"). Do NOT compute dates - just pass the exact text.
   - assignee_email: Email of person to assign
+  - associated_company: Company name (REQUIRED - infer from context)
+
 - For "add_to_list": Identify which list and which record
 - For "add_note": Identify the parent record (company/person)
 

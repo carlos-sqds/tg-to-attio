@@ -165,7 +165,10 @@ export function buildConfirmationKeyboard(): InlineKeyboardButton[][] {
 
 // ============ AI SUGGESTION KEYBOARDS ============
 
-export function buildAISuggestionKeyboard(hasClarifications: boolean): InlineKeyboardButton[][] {
+export function buildAISuggestionKeyboard(
+  hasClarifications: boolean,
+  intent?: string
+): InlineKeyboardButton[][] {
   const keyboard: InlineKeyboardButton[][] = [];
 
   if (hasClarifications) {
@@ -178,6 +181,12 @@ export function buildAISuggestionKeyboard(hasClarifications: boolean): InlineKey
       { text: "✅ Create", callback_data: "ai_confirm" },
       { text: "✏️ Edit", callback_data: "ai_edit" },
     ]);
+  }
+
+  // Add "Change company" button for records that require company linking
+  const companyLinkedIntents = ["create_task", "create_person", "create_deal"];
+  if (intent && companyLinkedIntents.includes(intent)) {
+    keyboard.push([{ text: "🏢 Change company", callback_data: "change_company" }]);
   }
 
   keyboard.push([{ text: "❌ Cancel", callback_data: "cancel" }]);

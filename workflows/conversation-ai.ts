@@ -14,7 +14,7 @@ import {
 } from "./steps/telegram";
 import { analyzeIntent, processClarification } from "./steps/ai";
 import { executeActionWithNote } from "./steps/attio-actions";
-import { fetchFullSchema } from "./steps/attio-schema";
+import { fetchFullSchemaCached } from "./steps/attio-schema";
 import { formatMessagesForSingleNote } from "@/src/services/attio/formatters";
 
 type ConversationState =
@@ -63,21 +63,6 @@ Commands:
   });
 
   logger.info("AI Workflow started", { userId });
-
-  // Fetch schema once at start (can be refreshed later)
-  try {
-    schema = await fetchFullSchema();
-    logger.info("Schema loaded", { 
-      objects: schema.objects.length, 
-      lists: schema.lists.length 
-    });
-  } catch (error) {
-    logger.error("Failed to load schema", { error });
-    await sendMessage({
-      chatId,
-      text: "⚠️ Could not load Attio schema. Some features may be limited.",
-    });
-  }
 
   const events = telegramHook.create({ token: `ai4-${userId}` });
 
@@ -223,6 +208,18 @@ Commands:
           continue;
         }
 
+        // Change company for task
+        if (data === "change_company" && currentAction) {
+          editingField = "associated_company";
+          state = "awaiting_edit_value";
+
+          await sendMessage({
+            chatId,
+            text: "Which company should this task be linked to?\n\nType the company name (it will be created if it doesn't exist):",
+          });
+          continue;
+        }
+
         // Edit specific field
         if (data.startsWith("edit_field:") && currentAction) {
           editingField = data.replace("edit_field:", "");
@@ -271,7 +268,7 @@ Commands:
                 messageId: lastBotMessageId,
                 text: suggestionText,
                 replyMarkup: {
-                  inline_keyboard: buildAISuggestionKeyboard(false),
+                  inline_keyboard: buildAISuggestionKeyboard(false, currentAction.intent),
                 },
               });
             }
@@ -315,7 +312,7 @@ Commands:
                 messageId: lastBotMessageId,
                 text: suggestionText,
                 replyMarkup: {
-                  inline_keyboard: buildAISuggestionKeyboard(false),
+                  inline_keyboard: buildAISuggestionKeyboard(false, currentAction.intent),
                 },
               });
             }
@@ -422,30 +419,26 @@ Commands:
 
           // Process with AI
           state = "processing_ai";
-          console.log("[WORKFLOW] Starting AI processing, instruction:", instruction.substring(0, 50));
-          
-          // Always show visible feedback first
-          console.log("[WORKFLOW] Sending processing message...");
-          lastBotMessageId = await sendMessage({
-            chatId,
-            text: "🤖 Processing your request...",
-          });
-          console.log("[WORKFLOW] Processing message sent, id:", lastBotMessageId);
 
           try {
-            // Reaction inside try (optional, can fail silently)
+            // Show thinking reaction immediately
             if (event.messageId) {
-              console.log("[WORKFLOW] Setting reaction...");
               await setMessageReaction(chatId, event.messageId, "🤔");
             }
 
-            console.log("[WORKFLOW] Fetching schema...");
+            // Lazy load schema (cached for 5 minutes)
             if (!schema) {
-              schema = await fetchFullSchema();
+              if (event.messageId) {
+                await setMessageReaction(chatId, event.messageId, "🔍");
+              }
+              schema = await fetchFullSchemaCached();
             }
-            console.log("[WORKFLOW] Schema fetched, objects:", schema.objects.length);
 
-            console.log("[WORKFLOW] Calling analyzeIntent...");
+            // Update reaction for AI processing
+            if (event.messageId) {
+              await setMessageReaction(chatId, event.messageId, "🧠");
+            }
+
             currentAction = await analyzeIntent({
               messages: messageQueue.map((m) => ({
                 text: m.text,
@@ -458,9 +451,8 @@ Commands:
               instruction,
               schema,
             });
-            console.log("[WORKFLOW] analyzeIntent returned:", currentAction?.intent);
 
-            // Remove thinking reaction
+            // Clear reaction
             if (event.messageId) {
               await setMessageReaction(chatId, event.messageId, null);
             }
@@ -469,13 +461,12 @@ Commands:
             const suggestionText = formatSuggestedAction(currentAction);
             const hasClarifications = currentAction.clarificationsNeeded.length > 0;
 
-            // Edit the processing message with the result
-            await editMessage({
+            // Send the result
+            lastBotMessageId = await sendMessage({
               chatId,
-              messageId: lastBotMessageId,
               text: suggestionText,
               replyMarkup: {
-                inline_keyboard: buildAISuggestionKeyboard(hasClarifications),
+                inline_keyboard: buildAISuggestionKeyboard(hasClarifications, currentAction.intent),
               },
             });
 
@@ -485,8 +476,7 @@ Commands:
               confidence: currentAction.confidence,
             });
           } catch (error) {
-            console.log("[WORKFLOW] ERROR in AI processing:", error);
-            // Remove thinking reaction on error
+            // Clear reaction on error
             if (event.messageId) {
               await setMessageReaction(chatId, event.messageId, null);
             }
@@ -494,10 +484,8 @@ Commands:
             const errorMsg = error instanceof Error ? error.message : String(error);
             logger.error("AI analysis failed", { userId, error: errorMsg });
 
-            // Edit the processing message with error
-            await editMessage({
+            await sendMessage({
               chatId,
-              messageId: lastBotMessageId,
               text: `❌ AI analysis failed: ${errorMsg.substring(0, 200)}`,
             });
             state = "idle";
@@ -508,21 +496,21 @@ Commands:
         // Handle instruction after /done without args
         if (state === "awaiting_instruction") {
           state = "processing_ai";
-          
-          // Always show visible feedback first
-          lastBotMessageId = await sendMessage({
-            chatId,
-            text: "🤖 Processing your request...",
-          });
 
           try {
-            // Reaction inside try (optional, can fail silently)
             if (event.messageId) {
               await setMessageReaction(chatId, event.messageId, "🤔");
             }
 
             if (!schema) {
-              schema = await fetchFullSchema();
+              if (event.messageId) {
+                await setMessageReaction(chatId, event.messageId, "🔍");
+              }
+              schema = await fetchFullSchemaCached();
+            }
+
+            if (event.messageId) {
+              await setMessageReaction(chatId, event.messageId, "🧠");
             }
 
             currentAction = await analyzeIntent({
@@ -538,7 +526,6 @@ Commands:
               schema,
             });
 
-            // Remove thinking reaction
             if (event.messageId) {
               await setMessageReaction(chatId, event.messageId, null);
             }
@@ -547,26 +534,21 @@ Commands:
             const suggestionText = formatSuggestedAction(currentAction);
             const hasClarifications = currentAction.clarificationsNeeded.length > 0;
 
-            // Edit the processing message with the result
-            await editMessage({
+            lastBotMessageId = await sendMessage({
               chatId,
-              messageId: lastBotMessageId,
               text: suggestionText,
               replyMarkup: {
-                inline_keyboard: buildAISuggestionKeyboard(hasClarifications),
+                inline_keyboard: buildAISuggestionKeyboard(hasClarifications, currentAction.intent),
               },
             });
           } catch (error) {
-            // Remove thinking reaction on error
             if (event.messageId) {
               await setMessageReaction(chatId, event.messageId, null);
             }
             
             const errorMsg = error instanceof Error ? error.message : String(error);
-            // Edit the processing message with error
-            await editMessage({
+            await sendMessage({
               chatId,
-              messageId: lastBotMessageId,
               text: `❌ AI analysis failed: ${errorMsg.substring(0, 200)}`,
             });
             state = "idle";
@@ -577,15 +559,12 @@ Commands:
         // Handle clarification text response - use AI to interpret
         if (state === "awaiting_clarification" && currentAction && schema) {
           const clarification = currentAction.clarificationsNeeded[currentClarificationIndex];
-          
-          // Show processing indicator
-          lastBotMessageId = await sendMessage({
-            chatId,
-            text: "🤖 Processing your response...",
-          });
 
           try {
-            // Use AI to interpret the response (handles "create if needed" etc.)
+            if (event.messageId) {
+              await setMessageReaction(chatId, event.messageId, "🧠");
+            }
+
             currentAction = await processClarification(
               currentAction,
               clarification.field,
@@ -593,23 +572,28 @@ Commands:
               schema
             );
 
+            if (event.messageId) {
+              await setMessageReaction(chatId, event.messageId, null);
+            }
+
             state = "awaiting_confirmation";
             const suggestionText = formatSuggestedAction(currentAction);
             const hasClarifications = currentAction.clarificationsNeeded.length > 0;
 
-            await editMessage({
+            lastBotMessageId = await sendMessage({
               chatId,
-              messageId: lastBotMessageId,
               text: suggestionText,
               replyMarkup: {
-                inline_keyboard: buildAISuggestionKeyboard(hasClarifications),
+                inline_keyboard: buildAISuggestionKeyboard(hasClarifications, currentAction.intent),
               },
             });
           } catch (error) {
+            if (event.messageId) {
+              await setMessageReaction(chatId, event.messageId, null);
+            }
             const errorMsg = error instanceof Error ? error.message : String(error);
-            await editMessage({
+            await sendMessage({
               chatId,
-              messageId: lastBotMessageId,
               text: `❌ Failed to process: ${errorMsg.substring(0, 200)}`,
             });
           }
@@ -621,14 +605,11 @@ Commands:
           const fieldToEdit = editingField;
           editingField = null;
 
-          // Show processing indicator
-          lastBotMessageId = await sendMessage({
-            chatId,
-            text: "🤖 Processing your response...",
-          });
-
           try {
-            // Use AI to interpret the response (handles additional instructions)
+            if (event.messageId) {
+              await setMessageReaction(chatId, event.messageId, "🧠");
+            }
+
             currentAction = await processClarification(
               currentAction,
               fieldToEdit,
@@ -636,23 +617,28 @@ Commands:
               schema
             );
 
+            if (event.messageId) {
+              await setMessageReaction(chatId, event.messageId, null);
+            }
+
             state = "awaiting_confirmation";
             const suggestionText = formatSuggestedAction(currentAction);
             const hasClarifications = currentAction.clarificationsNeeded.length > 0;
 
-            await editMessage({
+            lastBotMessageId = await sendMessage({
               chatId,
-              messageId: lastBotMessageId,
               text: suggestionText,
               replyMarkup: {
-                inline_keyboard: buildAISuggestionKeyboard(hasClarifications),
+                inline_keyboard: buildAISuggestionKeyboard(hasClarifications, currentAction.intent),
               },
             });
           } catch (error) {
+            if (event.messageId) {
+              await setMessageReaction(chatId, event.messageId, null);
+            }
             const errorMsg = error instanceof Error ? error.message : String(error);
-            await editMessage({
+            await sendMessage({
               chatId,
-              messageId: lastBotMessageId,
               text: `❌ Failed to process: ${errorMsg.substring(0, 200)}`,
             });
             state = "awaiting_confirmation";

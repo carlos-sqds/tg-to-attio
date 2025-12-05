@@ -12,6 +12,11 @@ import type {
 
 const ATTIO_BASE_URL = "https://api.attio.com/v2";
 
+// Schema cache (5 minute TTL)
+const SCHEMA_CACHE_TTL = 5 * 60 * 1000;
+let schemaCache: AttioSchema | null = null;
+let schemaCacheTime = 0;
+
 async function attioRequest<T>(
   endpoint: string,
   apiKey: string,
@@ -62,26 +67,27 @@ export async function getObjects(): Promise<ObjectDefinition[]> {
 
   const response = await attioRequest<{ data: AttioApiObject[] }>("/objects", apiKey);
 
-  const objects: ObjectDefinition[] = [];
+  // Fetch all attributes in parallel
+  const objectsWithAttrs = await Promise.all(
+    response.data.map(async (obj) => {
+      const attrsResponse = await attioRequest<{ data: AttioApiAttribute[] }>(
+        `/objects/${obj.api_slug}/attributes`,
+        apiKey
+      );
 
-  for (const obj of response.data) {
-    const attrsResponse = await attioRequest<{ data: AttioApiAttribute[] }>(
-      `/objects/${obj.api_slug}/attributes`,
-      apiKey
-    );
+      return {
+        workspaceId: obj.id.workspace_id,
+        objectId: obj.id.object_id,
+        apiSlug: obj.api_slug,
+        singularNoun: obj.singular_noun,
+        pluralNoun: obj.plural_noun,
+        createdAt: obj.created_at,
+        attributes: attrsResponse.data.map(mapAttribute),
+      };
+    })
+  );
 
-    objects.push({
-      workspaceId: obj.id.workspace_id,
-      objectId: obj.id.object_id,
-      apiSlug: obj.api_slug,
-      singularNoun: obj.singular_noun,
-      pluralNoun: obj.plural_noun,
-      createdAt: obj.created_at,
-      attributes: attrsResponse.data.map(mapAttribute),
-    });
-  }
-
-  return objects;
+  return objectsWithAttrs;
 }
 
 export async function getObjectAttributes(objectSlug: string): Promise<AttributeDefinition[]> {
@@ -106,27 +112,28 @@ export async function getLists(): Promise<ListDefinition[]> {
 
   const response = await attioRequest<{ data: AttioApiList[] }>("/lists", apiKey);
 
-  const lists: ListDefinition[] = [];
+  // Fetch all attributes in parallel
+  const listsWithAttrs = await Promise.all(
+    response.data.map(async (list) => {
+      const attrsResponse = await attioRequest<{ data: AttioApiAttribute[] }>(
+        `/lists/${list.api_slug}/attributes`,
+        apiKey
+      );
 
-  for (const list of response.data) {
-    const attrsResponse = await attioRequest<{ data: AttioApiAttribute[] }>(
-      `/lists/${list.api_slug}/attributes`,
-      apiKey
-    );
+      return {
+        id: list.id.list_id,
+        apiSlug: list.api_slug,
+        name: list.name,
+        parentObject: list.parent_object,
+        parentObjectId: list.parent_object_id,
+        createdAt: list.created_at,
+        workspaceMemberAccess: list.workspace_member_access,
+        attributes: attrsResponse.data.map(mapAttribute),
+      };
+    })
+  );
 
-    lists.push({
-      id: list.id.list_id,
-      apiSlug: list.api_slug,
-      name: list.name,
-      parentObject: list.parent_object,
-      parentObjectId: list.parent_object_id,
-      createdAt: list.created_at,
-      workspaceMemberAccess: list.workspace_member_access,
-      attributes: attrsResponse.data.map(mapAttribute),
-    });
-  }
-
-  return lists;
+  return listsWithAttrs;
 }
 
 export async function getWorkspaceMembers(): Promise<WorkspaceMember[]> {
@@ -168,59 +175,70 @@ export async function fetchFullSchema(): Promise<AttioSchema> {
   };
 }
 
+export async function fetchFullSchemaCached(): Promise<AttioSchema> {
+  "use step";
+
+  const now = Date.now();
+  if (schemaCache && now - schemaCacheTime < SCHEMA_CACHE_TTL) {
+    return schemaCache;
+  }
+
+  const schema = await fetchFullSchema();
+  schemaCache = schema;
+  schemaCacheTime = now;
+  return schema;
+}
+
 // Local version for testing (no "use step" directive)
 export async function fetchFullSchemaLocal(): Promise<AttioSchema> {
   const apiKey = process.env.ATTIO_API_KEY;
   if (!apiKey) throw new Error("ATTIO_API_KEY not configured");
 
-  // Fetch objects
-  const objectsResponse = await attioRequest<{ data: AttioApiObject[] }>("/objects", apiKey);
-  const objects: ObjectDefinition[] = [];
+  // Fetch objects, lists, and members in parallel
+  const [objectsResponse, listsResponse, membersResponse] = await Promise.all([
+    attioRequest<{ data: AttioApiObject[] }>("/objects", apiKey),
+    attioRequest<{ data: AttioApiList[] }>("/lists", apiKey),
+    attioRequest<{ data: AttioApiWorkspaceMember[] }>("/workspace_members", apiKey),
+  ]);
 
-  for (const obj of objectsResponse.data) {
-    const attrsResponse = await attioRequest<{ data: AttioApiAttribute[] }>(
-      `/objects/${obj.api_slug}/attributes`,
-      apiKey
-    );
-
-    objects.push({
-      workspaceId: obj.id.workspace_id,
-      objectId: obj.id.object_id,
-      apiSlug: obj.api_slug,
-      singularNoun: obj.singular_noun,
-      pluralNoun: obj.plural_noun,
-      createdAt: obj.created_at,
-      attributes: attrsResponse.data.map(mapAttribute),
-    });
-  }
-
-  // Fetch lists
-  const listsResponse = await attioRequest<{ data: AttioApiList[] }>("/lists", apiKey);
-  const lists: ListDefinition[] = [];
-
-  for (const list of listsResponse.data) {
-    const attrsResponse = await attioRequest<{ data: AttioApiAttribute[] }>(
-      `/lists/${list.api_slug}/attributes`,
-      apiKey
-    );
-
-    lists.push({
-      id: list.id.list_id,
-      apiSlug: list.api_slug,
-      name: list.name,
-      parentObject: list.parent_object,
-      parentObjectId: list.parent_object_id,
-      createdAt: list.created_at,
-      workspaceMemberAccess: list.workspace_member_access,
-      attributes: attrsResponse.data.map(mapAttribute),
-    });
-  }
-
-  // Fetch workspace members
-  const membersResponse = await attioRequest<{ data: AttioApiWorkspaceMember[] }>(
-    "/workspace_members",
-    apiKey
-  );
+  // Fetch all object and list attributes in parallel
+  const [objects, lists] = await Promise.all([
+    Promise.all(
+      objectsResponse.data.map(async (obj) => {
+        const attrsResponse = await attioRequest<{ data: AttioApiAttribute[] }>(
+          `/objects/${obj.api_slug}/attributes`,
+          apiKey
+        );
+        return {
+          workspaceId: obj.id.workspace_id,
+          objectId: obj.id.object_id,
+          apiSlug: obj.api_slug,
+          singularNoun: obj.singular_noun,
+          pluralNoun: obj.plural_noun,
+          createdAt: obj.created_at,
+          attributes: attrsResponse.data.map(mapAttribute),
+        };
+      })
+    ),
+    Promise.all(
+      listsResponse.data.map(async (list) => {
+        const attrsResponse = await attioRequest<{ data: AttioApiAttribute[] }>(
+          `/lists/${list.api_slug}/attributes`,
+          apiKey
+        );
+        return {
+          id: list.id.list_id,
+          apiSlug: list.api_slug,
+          name: list.name,
+          parentObject: list.parent_object,
+          parentObjectId: list.parent_object_id,
+          createdAt: list.created_at,
+          workspaceMemberAccess: list.workspace_member_access,
+          attributes: attrsResponse.data.map(mapAttribute),
+        };
+      })
+    ),
+  ]);
 
   const workspaceMembers = membersResponse.data.map((member) => ({
     id: member.id.workspace_member_id,

@@ -642,14 +642,32 @@ export async function executeActionWithNote(
 
   switch (action.intent) {
     case "create_person": {
-      // Use prerequisite company if created
-      const companyName = createdRecords["company"] ? undefined : String(data.company || "");
+      // Use prerequisite company if created, otherwise check associated_company
+      let companyForPerson = createdRecords["company"] ? undefined : String(data.company || data.associated_company || "");
+      
+      // If we have a company name but no prerequisite was created, search or create it
+      if (companyForPerson && !createdRecords["company"]) {
+        const companies = await searchRecords("companies", companyForPerson);
+        if (companies.length > 0) {
+          // Company exists, use its name for linking
+          companyForPerson = companies[0].name;
+        } else {
+          // Create the company
+          const createResult = await createCompany({ name: companyForPerson });
+          if (createResult.success && createResult.recordId) {
+            createdPrerequisites.push({
+              name: companyForPerson,
+              url: createResult.recordUrl,
+            });
+          }
+        }
+      }
       
       result = await createPerson({
         name: String(data.name || data.full_name || ""),
         email: String(data.email_addresses || data.email || ""),
         phone: String(data.phone_numbers || data.phone || ""),
-        company: companyName,
+        company: companyForPerson,
         jobTitle: String(data.job_title || ""),
         description: String(data.description || ""),
       });
@@ -676,8 +694,28 @@ export async function executeActionWithNote(
       const currency = typeof valueData === "object" ? valueData?.currency : "USD";
 
       // Use prerequisite company if created
-      const companyId = createdRecords["company"];
-      const companyName = companyId ? undefined : String(data.associated_company || data.company || "");
+      let companyId = createdRecords["company"];
+      let companyName = companyId ? undefined : String(data.associated_company || data.company || "");
+
+      // If we have a company name but no prerequisite was created, search or create it
+      if (companyName && !companyId) {
+        const companies = await searchRecords("companies", companyName);
+        if (companies.length > 0) {
+          companyId = companies[0].id;
+          companyName = undefined;
+        } else {
+          // Create the company
+          const createResult = await createCompany({ name: companyName });
+          if (createResult.success && createResult.recordId) {
+            companyId = createResult.recordId;
+            createdPrerequisites.push({
+              name: companyName,
+              url: createResult.recordUrl,
+            });
+            companyName = undefined;
+          }
+        }
+      }
 
       result = await createDeal({
         name: String(data.name || ""),
@@ -703,6 +741,30 @@ export async function executeActionWithNote(
       } else if (!linkedRecordId && createdRecords["person"]) {
         linkedRecordId = createdRecords["person"];
         linkedRecordObject = "people";
+      }
+
+      // If no linked record yet, check for associated_company
+      if (!linkedRecordId) {
+        const associatedCompany = String(data.associated_company || data.company || "");
+        if (associatedCompany) {
+          // Search for the company
+          const companies = await searchRecords("companies", associatedCompany);
+          if (companies.length > 0) {
+            linkedRecordId = companies[0].id;
+            linkedRecordObject = "companies";
+          } else {
+            // Create the company
+            const createResult = await createCompany({ name: associatedCompany });
+            if (createResult.success && createResult.recordId) {
+              linkedRecordId = createResult.recordId;
+              linkedRecordObject = "companies";
+              createdPrerequisites.push({
+                name: associatedCompany,
+                url: createResult.recordUrl,
+              });
+            }
+          }
+        }
       }
 
       // Try to extract deadline from original instruction first (AI often computes dates wrong)
@@ -734,7 +796,10 @@ export async function executeActionWithNote(
         linkedRecordId,
         linkedRecordObject,
       });
-      // Tasks don't support notes directly, return early
+      // Include created prerequisites in task result
+      if (createdPrerequisites.length > 0) {
+        result.createdPrerequisites = createdPrerequisites;
+      }
       return result;
     }
 

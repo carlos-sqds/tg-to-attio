@@ -348,7 +348,7 @@ export function formatSuggestedAction(action: {
   // Sort by priority and display
   fields.sort((a, b) => a.priority - b.priority);
   for (const field of fields) {
-    text += `${field.label}: ${escapeMarkdown(field.value)}\n`;
+    text += `${field.label}: ${field.value}\n`;
   }
 
   // Show prerequisite actions if any
@@ -357,17 +357,17 @@ export function formatSuggestedAction(action: {
     for (const prereq of action.prerequisiteActions) {
       const emoji = intentEmojis[prereq.intent] || "•";
       const name = prereq.extractedData.name || prereq.extractedData.content || "item";
-      text += `${emoji} ${escapeMarkdown(String(name))}\n`;
+      text += `${emoji} ${String(name)}\n`;
     }
   }
 
-  text += `\n📎 ${escapeMarkdown(action.noteTitle)}`;
+  text += `\n📎 ${action.noteTitle}`;
 
   // Show clarifications needed
   if (action.clarificationsNeeded.length > 0) {
     text += `\n\n⚠️ Need info:\n`;
     for (const c of action.clarificationsNeeded) {
-      text += `• ${escapeMarkdown(c.question)}\n`;
+      text += `• ${c.question}\n`;
     }
   }
 

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { parseDeadline, toAttioDateFormat } from '@/workflows/steps/attio-actions';
+import { parseDeadline, toAttioDateFormat, parseCompanyInput } from '@/workflows/steps/attio-actions';
 
 describe('toAttioDateFormat', () => {
   it('converts to nanosecond precision (9 decimal places)', () => {
@@ -221,5 +221,110 @@ describe('parseDeadline from different starting days', () => {
     
     const result = parseDeadline('wednesday');
     expect(result).toContain('2025-12-17'); // Next Wednesday
+  });
+});
+
+describe('parseDeadline weeks format', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2025-12-05T12:00:00Z')); // Friday
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('parses "2 weeks" correctly', () => {
+    const result = parseDeadline('2 weeks');
+    expect(result).toContain('2025-12-19'); // Dec 5 + 14 = Dec 19
+  });
+
+  it('parses "in 2 weeks" correctly', () => {
+    const result = parseDeadline('in 2 weeks');
+    expect(result).toContain('2025-12-19');
+  });
+
+  it('parses "two weeks" correctly', () => {
+    const result = parseDeadline('two weeks');
+    expect(result).toContain('2025-12-19');
+  });
+
+  it('parses "in two weeks" correctly', () => {
+    const result = parseDeadline('in two weeks');
+    expect(result).toContain('2025-12-19');
+  });
+
+  it('parses "3 weeks" correctly', () => {
+    const result = parseDeadline('3 weeks');
+    expect(result).toContain('2025-12-26'); // Dec 5 + 21 = Dec 26
+  });
+
+  it('parses "three weeks" correctly', () => {
+    const result = parseDeadline('three weeks');
+    expect(result).toContain('2025-12-26');
+  });
+
+  it('parses "1 week" correctly (same as next week)', () => {
+    const result = parseDeadline('1 week');
+    expect(result).toContain('2025-12-12'); // Dec 5 + 7 = Dec 12
+  });
+
+  it('parses "one week" correctly', () => {
+    const result = parseDeadline('one week');
+    expect(result).toContain('2025-12-12');
+  });
+
+  it('parses "four weeks" correctly', () => {
+    const result = parseDeadline('four weeks');
+    expect(result).toContain('2026-01-02'); // Dec 5 + 28 = Jan 2
+  });
+});
+
+describe('parseCompanyInput', () => {
+  it('extracts name and domain from "Company from domain.com"', () => {
+    const result = parseCompanyInput('Noah from Noah.com');
+    expect(result.name).toBe('Noah');
+    expect(result.domain).toBe('noah.com');
+  });
+
+  it('handles "Company from https://domain.com" pattern', () => {
+    const result = parseCompanyInput('TechCorp from techcorp.io');
+    expect(result.name).toBe('TechCorp');
+    expect(result.domain).toBe('techcorp.io');
+  });
+
+  it('extracts name and domain from "Company (domain.com)"', () => {
+    const result = parseCompanyInput('Acme Inc (acme.com)');
+    expect(result.name).toBe('Acme Inc');
+    expect(result.domain).toBe('acme.com');
+  });
+
+  it('extracts company name from just a domain', () => {
+    const result = parseCompanyInput('stripe.com');
+    expect(result.name).toBe('Stripe');
+    expect(result.domain).toBe('stripe.com');
+  });
+
+  it('handles URL format with https', () => {
+    const result = parseCompanyInput('https://shopify.com');
+    expect(result.name).toBe('Shopify');
+    expect(result.domain).toBe('shopify.com');
+  });
+
+  it('handles URL with www', () => {
+    const result = parseCompanyInput('www.google.com');
+    expect(result.name).toBe('Google');
+    expect(result.domain).toBe('google.com');
+  });
+
+  it('returns just name for plain company names', () => {
+    const result = parseCompanyInput('Microsoft');
+    expect(result.name).toBe('Microsoft');
+    expect(result.domain).toBeUndefined();
+  });
+
+  it('trims whitespace', () => {
+    const result = parseCompanyInput('  Apple  ');
+    expect(result.name).toBe('Apple');
   });
 });

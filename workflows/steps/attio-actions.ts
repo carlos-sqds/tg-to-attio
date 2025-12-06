@@ -280,6 +280,34 @@ export interface CreateTaskInput {
   linkedRecordObject?: string; // "people", "companies", "deals"
 }
 
+// Parse company input like "Noah from Noah.com" into name and domain
+export function parseCompanyInput(input: string): { name: string; domain?: string } {
+  const trimmed = input.trim();
+  
+  // Pattern: "CompanyName from domain.com"
+  const fromPattern = trimmed.match(/^(.+?)\s+from\s+(\S+\.\S+)$/i);
+  if (fromPattern) {
+    return { name: fromPattern[1].trim(), domain: fromPattern[2].toLowerCase() };
+  }
+  
+  // Pattern: "CompanyName (domain.com)"
+  const parenPattern = trimmed.match(/^(.+?)\s*\((\S+\.\S+)\)$/);
+  if (parenPattern) {
+    return { name: parenPattern[1].trim(), domain: parenPattern[2].toLowerCase() };
+  }
+  
+  // Check if input looks like just a URL/domain
+  const domainOnly = trimmed.match(/^(?:https?:\/\/)?(?:www\.)?([a-z0-9-]+\.[a-z.]+)$/i);
+  if (domainOnly) {
+    const domain = domainOnly[1].toLowerCase();
+    const namePart = domain.split('.')[0];
+    const name = namePart.charAt(0).toUpperCase() + namePart.slice(1);
+    return { name, domain };
+  }
+  
+  return { name: trimmed };
+}
+
 // Convert Date to Attio's expected format (nanosecond precision)
 export function toAttioDateFormat(date: Date): string {
   // Attio expects: "2023-01-01T15:00:00.000000000Z" (9 decimal places)
@@ -330,6 +358,19 @@ export function parseDeadline(deadline: unknown): string | null {
     now.setDate(now.getDate() + parseInt(daysMatch[1], 10));
     now.setHours(9, 0, 0, 0);
     return toAttioDateFormat(now);
+  }
+  
+  // Handle "in X weeks" or "X weeks" (including word numbers like "two weeks")
+  const wordToNum: Record<string, number> = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6 };
+  const weeksMatch = lowerDeadline.match(/(?:in\s+)?(\d+|one|two|three|four|five|six)\s*weeks?/i);
+  if (weeksMatch) {
+    const weekValue = weeksMatch[1].toLowerCase();
+    const weeks = wordToNum[weekValue] || parseInt(weekValue, 10);
+    if (!isNaN(weeks)) {
+      now.setDate(now.getDate() + (weeks * 7));
+      now.setHours(9, 0, 0, 0);
+      return toAttioDateFormat(now);
+    }
   }
   
   // Handle "end of week", "eow"
@@ -409,8 +450,7 @@ export async function createTask(input: CreateTaskInput): Promise<ActionResult> 
     return {
       success: true,
       recordId: response.data.id.task_id,
-      // Construct task URL - Attio doesn't return web_url for tasks
-      recordUrl: `https://app.attio.com/tasks`,
+      // Attio doesn't return web_url for tasks - will use linked record URL if available
     };
   } catch (error) {
     return {
@@ -734,10 +774,16 @@ export async function executeActionWithNote(
       // Use prerequisite company/person if created
       let linkedRecordId = String(data.linked_record_id || "");
       let linkedRecordObject = String(data.linked_record_object || "");
+      let linkedCompanyUrl: string | undefined;
       
       if (!linkedRecordId && createdRecords["company"]) {
         linkedRecordId = createdRecords["company"];
         linkedRecordObject = "companies";
+        // Get URL from prerequisite if available
+        const prereqCompany = createdPrerequisites.find(p => p.name.startsWith("🏢"));
+        if (prereqCompany?.url) {
+          linkedCompanyUrl = prereqCompany.url;
+        }
       } else if (!linkedRecordId && createdRecords["person"]) {
         linkedRecordId = createdRecords["person"];
         linkedRecordObject = "people";
@@ -747,19 +793,27 @@ export async function executeActionWithNote(
       if (!linkedRecordId) {
         const associatedCompany = String(data.associated_company || data.company || "");
         if (associatedCompany) {
-          // Search for the company
-          const companies = await searchRecords("companies", associatedCompany);
+          // Parse company input to extract name and domain (e.g., "Noah from Noah.com")
+          const parsed = parseCompanyInput(associatedCompany);
+          
+          // Search for the company by name
+          const companies = await searchRecords("companies", parsed.name);
           if (companies.length > 0) {
             linkedRecordId = companies[0].id;
             linkedRecordObject = "companies";
+            // Note: searchRecords doesn't return URL, we'd need separate fetch
           } else {
-            // Create the company
-            const createResult = await createCompany({ name: associatedCompany });
+            // Create the company with parsed name and domain
+            const createResult = await createCompany({ 
+              name: parsed.name, 
+              domain: parsed.domain 
+            });
             if (createResult.success && createResult.recordId) {
               linkedRecordId = createResult.recordId;
               linkedRecordObject = "companies";
+              linkedCompanyUrl = createResult.recordUrl;
               createdPrerequisites.push({
-                name: associatedCompany,
+                name: parsed.name,
                 url: createResult.recordUrl,
               });
             }
@@ -796,6 +850,12 @@ export async function executeActionWithNote(
         linkedRecordId,
         linkedRecordObject,
       });
+      
+      // Link to company's tasks tab since Attio doesn't provide direct task URLs
+      if (linkedCompanyUrl) {
+        result.recordUrl = `${linkedCompanyUrl}/tasks`;
+      }
+      
       // Include created prerequisites in task result
       if (createdPrerequisites.length > 0) {
         result.createdPrerequisites = createdPrerequisites;

@@ -7,7 +7,7 @@ import {
   sendMessage,
   editMessage,
   answerCallbackQuery,
-  setMessageReaction,
+  withCyclingReaction,
   buildAISuggestionKeyboard,
   buildClarificationKeyboard,
   buildEditFieldKeyboard,
@@ -460,40 +460,31 @@ Send /start to create a fresh session.`,
           state = "processing_ai";
 
           try {
-            // Show thinking reaction immediately
-            if (event.messageId) {
-              await setMessageReaction(chatId, event.messageId, "🤔");
-            }
-
-            // Lazy load schema (cached for 5 minutes)
-            if (!schema) {
-              if (event.messageId) {
-                await setMessageReaction(chatId, event.messageId, "🔍");
+            // Run AI processing with cycling reaction animation
+            const processWithAI = async () => {
+              // Lazy load schema (cached for 5 minutes)
+              if (!schema) {
+                schema = await fetchFullSchemaCached();
               }
-              schema = await fetchFullSchemaCached();
-            }
 
-            // Update reaction for AI processing
+              return await analyzeIntent({
+                messages: messageQueue.map((m) => ({
+                  text: m.text,
+                  chatName: m.chatName,
+                  date: m.date,
+                  senderUsername: m.senderUsername,
+                  senderFirstName: m.senderFirstName,
+                  senderLastName: m.senderLastName,
+                })),
+                instruction,
+                schema,
+              });
+            };
+
             if (event.messageId) {
-              await setMessageReaction(chatId, event.messageId, "🧠");
-            }
-
-            currentAction = await analyzeIntent({
-              messages: messageQueue.map((m) => ({
-                text: m.text,
-                chatName: m.chatName,
-                date: m.date,
-                senderUsername: m.senderUsername,
-                senderFirstName: m.senderFirstName,
-                senderLastName: m.senderLastName,
-              })),
-              instruction,
-              schema,
-            });
-
-            // Clear reaction
-            if (event.messageId) {
-              await setMessageReaction(chatId, event.messageId, null);
+              currentAction = await withCyclingReaction(chatId, event.messageId, processWithAI);
+            } else {
+              currentAction = await processWithAI();
             }
 
             state = "awaiting_confirmation";
@@ -515,11 +506,7 @@ Send /start to create a fresh session.`,
               confidence: currentAction.confidence,
             });
           } catch (error) {
-            // Clear reaction on error
-            if (event.messageId) {
-              await setMessageReaction(chatId, event.messageId, null);
-            }
-            
+            // Reaction is auto-cleared by withCyclingReaction
             const errorMsg = error instanceof Error ? error.message : String(error);
             logger.error("AI analysis failed", { userId, error: errorMsg });
 
@@ -537,36 +524,29 @@ Send /start to create a fresh session.`,
           state = "processing_ai";
 
           try {
-            if (event.messageId) {
-              await setMessageReaction(chatId, event.messageId, "🤔");
-            }
-
-            if (!schema) {
-              if (event.messageId) {
-                await setMessageReaction(chatId, event.messageId, "🔍");
+            const processWithAI = async () => {
+              if (!schema) {
+                schema = await fetchFullSchemaCached();
               }
-              schema = await fetchFullSchemaCached();
-            }
+
+              return await analyzeIntent({
+                messages: messageQueue.map((m) => ({
+                  text: m.text,
+                  chatName: m.chatName,
+                  date: m.date,
+                  senderUsername: m.senderUsername,
+                  senderFirstName: m.senderFirstName,
+                  senderLastName: m.senderLastName,
+                })),
+                instruction: text,
+                schema,
+              });
+            };
 
             if (event.messageId) {
-              await setMessageReaction(chatId, event.messageId, "🧠");
-            }
-
-            currentAction = await analyzeIntent({
-              messages: messageQueue.map((m) => ({
-                text: m.text,
-                chatName: m.chatName,
-                date: m.date,
-                senderUsername: m.senderUsername,
-                senderFirstName: m.senderFirstName,
-                senderLastName: m.senderLastName,
-              })),
-              instruction: text,
-              schema,
-            });
-
-            if (event.messageId) {
-              await setMessageReaction(chatId, event.messageId, null);
+              currentAction = await withCyclingReaction(chatId, event.messageId, processWithAI);
+            } else {
+              currentAction = await processWithAI();
             }
 
             state = "awaiting_confirmation";
@@ -581,10 +561,6 @@ Send /start to create a fresh session.`,
               },
             });
           } catch (error) {
-            if (event.messageId) {
-              await setMessageReaction(chatId, event.messageId, null);
-            }
-            
             const errorMsg = error instanceof Error ? error.message : String(error);
             await sendMessage({
               chatId,
@@ -600,19 +576,19 @@ Send /start to create a fresh session.`,
           const clarification = currentAction.clarificationsNeeded[currentClarificationIndex];
 
           try {
-            if (event.messageId) {
-              await setMessageReaction(chatId, event.messageId, "🧠");
-            }
-
-            currentAction = await processClarification(
-              currentAction,
-              clarification.field,
-              text,
-              schema
-            );
+            const processWithAI = async () => {
+              return await processClarification(
+                currentAction!,
+                clarification.field,
+                text,
+                schema!
+              );
+            };
 
             if (event.messageId) {
-              await setMessageReaction(chatId, event.messageId, null);
+              currentAction = await withCyclingReaction(chatId, event.messageId, processWithAI);
+            } else {
+              currentAction = await processWithAI();
             }
 
             state = "awaiting_confirmation";
@@ -627,9 +603,6 @@ Send /start to create a fresh session.`,
               },
             });
           } catch (error) {
-            if (event.messageId) {
-              await setMessageReaction(chatId, event.messageId, null);
-            }
             const errorMsg = error instanceof Error ? error.message : String(error);
             await sendMessage({
               chatId,
@@ -645,19 +618,19 @@ Send /start to create a fresh session.`,
           editingField = null;
 
           try {
-            if (event.messageId) {
-              await setMessageReaction(chatId, event.messageId, "🧠");
-            }
-
-            currentAction = await processClarification(
-              currentAction,
-              fieldToEdit,
-              text,
-              schema
-            );
+            const processWithAI = async () => {
+              return await processClarification(
+                currentAction!,
+                fieldToEdit,
+                text,
+                schema!
+              );
+            };
 
             if (event.messageId) {
-              await setMessageReaction(chatId, event.messageId, null);
+              currentAction = await withCyclingReaction(chatId, event.messageId, processWithAI);
+            } else {
+              currentAction = await processWithAI();
             }
 
             state = "awaiting_confirmation";
@@ -672,9 +645,6 @@ Send /start to create a fresh session.`,
               },
             });
           } catch (error) {
-            if (event.messageId) {
-              await setMessageReaction(chatId, event.messageId, null);
-            }
             const errorMsg = error instanceof Error ? error.message : String(error);
             await sendMessage({
               chatId,

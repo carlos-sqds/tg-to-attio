@@ -118,6 +118,59 @@ export async function setMessageReaction(
   }
 }
 
+const THINKING_EMOJIS = ["🤔", "🔍", "🧠", "⚡", "✨"];
+const REACTION_CYCLE_MS = 1500;
+
+export async function withCyclingReaction<T>(
+  chatId: number,
+  messageId: number,
+  operation: () => Promise<T>
+): Promise<T> {
+  "use step";
+  
+  let currentIndex = 0;
+  let stopped = false;
+  
+  // Start cycling reactions
+  const cycleReactions = async () => {
+    while (!stopped) {
+      try {
+        const emoji = THINKING_EMOJIS[currentIndex % THINKING_EMOJIS.length];
+        await telegramRequest("setMessageReaction", {
+          chat_id: chatId,
+          message_id: messageId,
+          reaction: [{ type: "emoji", emoji }],
+        });
+      } catch {
+        // Ignore reaction errors
+      }
+      currentIndex++;
+      await new Promise(resolve => setTimeout(resolve, REACTION_CYCLE_MS));
+    }
+  };
+  
+  // Start cycling in background (don't await)
+  const cyclePromise = cycleReactions();
+  
+  try {
+    // Run the actual operation
+    const result = await operation();
+    return result;
+  } finally {
+    // Stop cycling and clear reaction
+    stopped = true;
+    try {
+      await telegramRequest("setMessageReaction", {
+        chat_id: chatId,
+        message_id: messageId,
+        reaction: [],
+      });
+    } catch {
+      // Ignore
+    }
+  }
+}
+
 export function buildCompanySelectionKeyboard(
   recentCompanies: Array<{ id: string; name: string }>
 ): InlineKeyboardButton[][] {

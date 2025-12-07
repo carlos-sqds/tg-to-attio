@@ -26,6 +26,21 @@ async function attioRequest<T>(
   return response.json() as Promise<T>;
 }
 
+async function getRecordUrl(objectSlug: string, recordId: string): Promise<string | undefined> {
+  const apiKey = process.env.ATTIO_API_KEY;
+  if (!apiKey) return undefined;
+
+  try {
+    const response = await attioRequest<{ data: { web_url: string } }>(
+      `/objects/${objectSlug}/records/${recordId}`,
+      apiKey
+    );
+    return response.data.web_url;
+  } catch {
+    return undefined;
+  }
+}
+
 interface AttioRecordResponse {
   data: {
     id: { record_id: string };
@@ -801,7 +816,7 @@ export async function executeActionWithNote(
           if (companies.length > 0) {
             linkedRecordId = companies[0].id;
             linkedRecordObject = "companies";
-            // Note: searchRecords doesn't return URL, we'd need separate fetch
+            linkedCompanyUrl = await getRecordUrl("companies", companies[0].id);
           } else {
             // Create the company with parsed name and domain
             const createResult = await createCompany({ 

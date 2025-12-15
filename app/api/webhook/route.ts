@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { start } from "workflow/api";
+import { start, getHookByToken, Run } from "workflow/api";
 import { logger } from "@/src/lib/logger";
 import { telegramHook, type TelegramEvent } from "@/workflows/hooks";
 import { conversationWorkflowAI } from "@/workflows/conversation-ai";
@@ -157,6 +157,19 @@ export async function POST(request: NextRequest) {
       // /start - Start a new workflow (workflow will send welcome)
       if (text === "/start") {
         try {
+          // Cancel any existing workflow for this user
+          const hookToken = `ai4-${userId}`;
+          try {
+            const existingHook = await getHookByToken(hookToken);
+            if (existingHook?.runId) {
+              const existingRun = new Run(existingHook.runId);
+              await existingRun.cancel();
+              logger.info("Cancelled existing workflow", { userId, runId: existingHook.runId });
+            }
+          } catch {
+            // No existing hook found, that's fine
+          }
+
           const run = await start(conversationWorkflowAI, [userId, chatId]);
           logger.info("Started new AI workflow", { userId, runId: run.runId });
         } catch (error) {

@@ -16,7 +16,12 @@ interface TelegramUpdate {
 
 interface TelegramMessage {
   message_id: number;
-  from?: { id: number };
+  from?: { 
+    id: number;
+    first_name?: string;
+    last_name?: string;
+    username?: string;
+  };
   chat: { id: number };
   text?: string;
   caption?: string;
@@ -179,7 +184,16 @@ export async function POST(request: NextRequest) {
         // For /done, send as text_message to preserve the instruction
         if (command === "/done") {
           console.log("[WEBHOOK] /done command received, text:", text.substring(0, 50));
-          const event: TelegramEvent = { type: "text_message", text, messageId: msg.message_id };
+          const event: TelegramEvent = { 
+            type: "text_message", 
+            text, 
+            messageId: msg.message_id,
+            callerInfo: {
+              firstName: msg.from?.first_name,
+              lastName: msg.from?.last_name,
+              username: msg.from?.username,
+            },
+          };
           const success = await tryResumeWorkflow(userId, event);
           console.log("[WEBHOOK] tryResumeWorkflow result:", success);
           if (!success) {

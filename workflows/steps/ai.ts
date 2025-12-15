@@ -1,13 +1,17 @@
 import { generateObject } from "ai";
 import { gateway } from "@ai-sdk/gateway";
+import { z } from "zod";
 import {
   SuggestedActionSchema,
   type SuggestedAction,
   type AIContext,
+  type WorkspaceMember,
 } from "@/src/services/attio/schema-types";
 import { buildSystemPrompt, buildUserPrompt } from "@/src/ai/prompts";
+import type { CallerInfo } from "@/workflows/hooks";
 
 const DEFAULT_MODEL = "anthropic/claude-3-5-sonnet-20241022";
+const CHEAP_MODEL = "google/gemini-2.0-flash-lite";
 
 /**
  * Workflow step for analyzing user intent
@@ -75,4 +79,105 @@ Interpret the user's intent and update the suggested action accordingly:
   });
 
   return object;
+}
+
+export interface ResolvedAssignee {
+  memberId: string;
+  memberName: string;
+  email: string;
+}
+
+/**
+ * Resolve an assignee name to a workspace member using LLM fuzzy matching.
+ * Uses a cheap model (gemini-2.0-flash-lite) for cost efficiency.
+ * 
+ * @param assigneeName - The name to match (can be partial, nickname, "me", etc.)
+ * @param callerInfo - Info about the Telegram user who called /done (used when assigneeName is "me" or empty)
+ * @param workspaceMembers - List of workspace members to match against
+ * @param defaultToCaller - If true and assigneeName is empty, default to caller
+ */
+export async function resolveAssignee(
+  assigneeName: string,
+  callerInfo: CallerInfo | null,
+  workspaceMembers: WorkspaceMember[],
+  defaultToCaller: boolean = true
+): Promise<ResolvedAssignee | null> {
+  "use step";
+
+  if (workspaceMembers.length === 0) {
+    return null;
+  }
+
+  // Determine what name to search for
+  let searchName = assigneeName.trim();
+  
+  // Handle "me" - use caller's info
+  if (searchName.toLowerCase() === "me" && callerInfo) {
+    searchName = [callerInfo.firstName, callerInfo.lastName].filter(Boolean).join(" ");
+    if (!searchName && callerInfo.username) {
+      searchName = callerInfo.username;
+    }
+  }
+  
+  // Handle empty - default to caller if enabled
+  if (!searchName && defaultToCaller && callerInfo) {
+    searchName = [callerInfo.firstName, callerInfo.lastName].filter(Boolean).join(" ");
+    if (!searchName && callerInfo.username) {
+      searchName = callerInfo.username;
+    }
+  }
+
+  // Still no name to search for
+  if (!searchName) {
+    return null;
+  }
+
+  const apiKey = process.env.AI_GATEWAY_API_KEY;
+  if (!apiKey) {
+    console.warn("[RESOLVE_ASSIGNEE] AI_GATEWAY_API_KEY not configured");
+    return null;
+  }
+
+  const memberList = workspaceMembers
+    .map((m) => `- ID: "${m.id}" | Name: "${m.firstName} ${m.lastName}" | Email: "${m.email}"`)
+    .join("\n");
+
+  try {
+    const { object } = await generateObject({
+      model: gateway(CHEAP_MODEL),
+      schema: z.object({
+        matchedMemberId: z.string().nullable().describe("The ID of the matched member, or null if no match"),
+        confidence: z.enum(["high", "medium", "low", "none"]).describe("Confidence level of the match"),
+      }),
+      prompt: `Match the name "${searchName}" to one of these workspace members:
+
+${memberList}
+
+Rules:
+- Match by first name, last name, full name, email prefix, or reasonable nickname
+- "Carlos" matches "Carlos Noriega", "Sarah" matches "Sarah Johnson"
+- Username like "cnoriega" could match "Carlos Noriega"
+- Return the member ID if there's a reasonable match
+- Return null if no reasonable match exists
+- Set confidence: "high" for exact/obvious matches, "medium" for partial matches, "low" for uncertain, "none" if no match`,
+    });
+
+    console.log("[RESOLVE_ASSIGNEE] LLM result:", { searchName, result: object });
+
+    if (object.matchedMemberId && object.confidence !== "none") {
+      const member = workspaceMembers.find((m) => m.id === object.matchedMemberId);
+      if (member) {
+        return {
+          memberId: member.id,
+          memberName: `${member.firstName} ${member.lastName}`,
+          email: member.email,
+        };
+      }
+    }
+
+    return null;
+  } catch (error) {
+    console.error("[RESOLVE_ASSIGNEE] Error:", error);
+    return null;
+  }
 }

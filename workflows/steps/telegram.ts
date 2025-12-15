@@ -242,6 +242,11 @@ export function buildAISuggestionKeyboard(
     keyboard.push([{ text: "🏢 Change company", callback_data: "change_company" }]);
   }
 
+  // Add "Change assignee" button for tasks
+  if (intent === "create_task") {
+    keyboard.push([{ text: "👤 Change assignee", callback_data: "change_assignee" }]);
+  }
+
   keyboard.push([{ text: "❌ Cancel", callback_data: "cancel" }]);
 
   return keyboard;
@@ -304,6 +309,41 @@ export function buildSearchResultSelectionKeyboard(
     { text: "➕ Create new", callback_data: "create_new" },
     { text: "❌ Cancel", callback_data: "cancel" },
   ]);
+
+  return keyboard;
+}
+
+export function buildMemberSelectionKeyboard(
+  members: Array<{ id: string; firstName: string; lastName: string; email: string }>,
+  page: number = 0,
+  pageSize: number = 5
+): InlineKeyboardButton[][] {
+  const keyboard: InlineKeyboardButton[][] = [];
+  const totalPages = Math.ceil(members.length / pageSize);
+  const startIdx = page * pageSize;
+  const endIdx = Math.min(startIdx + pageSize, members.length);
+  const pageMembers = members.slice(startIdx, endIdx);
+
+  for (const member of pageMembers) {
+    const label = `👤 ${member.firstName} ${member.lastName}`;
+    keyboard.push([{ text: label, callback_data: `assignee:${member.id}` }]);
+  }
+
+  // Add pagination if needed
+  if (totalPages > 1) {
+    const navRow: InlineKeyboardButton[] = [];
+    if (page > 0) {
+      navRow.push({ text: "◀️ Prev", callback_data: "assignee_prev" });
+    }
+    navRow.push({ text: `${page + 1}/${totalPages}`, callback_data: "noop" });
+    if (page < totalPages - 1) {
+      navRow.push({ text: "Next ▶️", callback_data: "assignee_next" });
+    }
+    keyboard.push(navRow);
+  }
+
+  keyboard.push([{ text: "✏️ Type name", callback_data: "assignee_type" }]);
+  keyboard.push([{ text: "❌ Cancel", callback_data: "cancel" }]);
 
   return keyboard;
 }

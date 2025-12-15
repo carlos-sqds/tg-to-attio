@@ -860,6 +860,7 @@ export async function executeActionWithNote(
 
       result = await createTask({
         content: String(data.content || data.title || data.task || ""),
+        assigneeId: data.assignee_id ? String(data.assignee_id) : undefined,
         assigneeEmail: String(data.assignee_email || data.assignee || ""),
         deadline: deadlineValue,
         linkedRecordId,

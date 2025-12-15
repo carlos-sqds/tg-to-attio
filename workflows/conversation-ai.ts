@@ -2,7 +2,7 @@ import { logger } from "@/src/lib/logger";
 import { BUILD_INFO } from "@/src/lib/build-info";
 import type { ForwardedMessageData } from "@/src/types";
 import type { SuggestedAction, AttioSchema } from "@/src/services/attio/schema-types";
-import { telegramHook, type TelegramEvent } from "./hooks";
+import { telegramHook, type TelegramEvent, type CallerInfo } from "./hooks";
 import {
   sendMessage,
   editMessage,
@@ -11,9 +11,10 @@ import {
   buildAISuggestionKeyboard,
   buildClarificationKeyboard,
   buildEditFieldKeyboard,
+  buildMemberSelectionKeyboard,
   formatSuggestedAction,
 } from "./steps/telegram";
-import { analyzeIntent, processClarification } from "./steps/ai";
+import { analyzeIntent, processClarification, resolveAssignee } from "./steps/ai";
 import { executeActionWithNote } from "./steps/attio-actions";
 import { fetchFullSchemaCached } from "./steps/attio-schema";
 import { formatMessagesForSingleNote } from "@/src/services/attio/formatters";
@@ -26,6 +27,8 @@ type ConversationState =
   | "awaiting_confirmation"
   | "awaiting_clarification"
   | "awaiting_edit_value"
+  | "awaiting_assignee_selection"
+  | "awaiting_assignee_input"
   | "executing";
 
 export async function conversationWorkflowAI(userId: number, chatId: number) {
@@ -39,6 +42,8 @@ export async function conversationWorkflowAI(userId: number, chatId: number) {
   let currentClarificationIndex = 0;
   let editingField: string | null = null;
   let currentInstruction: string | null = null; // Store for date extraction
+  let callerInfo: CallerInfo | null = null; // Store caller info for assignee resolution
+  let assigneeSelectionPage = 0; // Pagination for assignee selection
   const sessionStartTime = new Date();
 
   // Send welcome message
@@ -220,6 +225,96 @@ Commands:
             chatId,
             text: "Which company should this task be linked to?\n\nType the company name (it will be created if it doesn't exist):",
           });
+          continue;
+        }
+
+        // Change assignee for task
+        if (data === "change_assignee" && currentAction && schema) {
+          const currentSchema = schema as AttioSchema;
+          state = "awaiting_assignee_selection";
+          assigneeSelectionPage = 0;
+
+          await sendMessage({
+            chatId,
+            text: "Select an assignee:",
+            replyMarkup: {
+              inline_keyboard: buildMemberSelectionKeyboard(currentSchema.workspaceMembers, 0),
+            },
+          });
+          continue;
+        }
+
+        // Assignee selected from list
+        if (data.startsWith("assignee:") && currentAction && schema) {
+          const currentSchema = schema as AttioSchema;
+          const memberId = data.replace("assignee:", "");
+          const member = currentSchema.workspaceMembers.find((m) => m.id === memberId);
+
+          if (member) {
+            currentAction.extractedData.assignee_id = memberId;
+            currentAction.extractedData.assignee = `${member.firstName} ${member.lastName}`;
+            currentAction.extractedData.assignee_email = member.email;
+
+            state = "awaiting_confirmation";
+            const suggestionText = formatSuggestedAction(currentAction);
+
+            lastBotMessageId = await sendMessage({
+              chatId,
+              text: suggestionText,
+              replyMarkup: {
+                inline_keyboard: buildAISuggestionKeyboard(false, currentAction.intent),
+              },
+            });
+          }
+          continue;
+        }
+
+        // Assignee pagination
+        if (data === "assignee_prev" && schema) {
+          const currentSchema = schema as AttioSchema;
+          assigneeSelectionPage = Math.max(0, assigneeSelectionPage - 1);
+          if (lastBotMessageId) {
+            await editMessage({
+              chatId,
+              messageId: lastBotMessageId,
+              text: "Select an assignee:",
+              replyMarkup: {
+                inline_keyboard: buildMemberSelectionKeyboard(currentSchema.workspaceMembers, assigneeSelectionPage),
+              },
+            });
+          }
+          continue;
+        }
+
+        if (data === "assignee_next" && schema) {
+          const currentSchema = schema as AttioSchema;
+          const totalPages = Math.ceil(currentSchema.workspaceMembers.length / 5);
+          assigneeSelectionPage = Math.min(totalPages - 1, assigneeSelectionPage + 1);
+          if (lastBotMessageId) {
+            await editMessage({
+              chatId,
+              messageId: lastBotMessageId,
+              text: "Select an assignee:",
+              replyMarkup: {
+                inline_keyboard: buildMemberSelectionKeyboard(currentSchema.workspaceMembers, assigneeSelectionPage),
+              },
+            });
+          }
+          continue;
+        }
+
+        // Type assignee name manually
+        if (data === "assignee_type") {
+          state = "awaiting_assignee_input";
+          await sendMessage({
+            chatId,
+            text: "Type the assignee name:",
+          });
+          continue;
+        }
+
+        // No-op for pagination display
+        if (data === "noop") {
           continue;
         }
 
@@ -438,6 +533,11 @@ Send /start to create a fresh session.`,
           console.log("[WORKFLOW] Processing /done command");
           const instruction = text.replace("/done", "").trim();
           currentInstruction = instruction; // Store for later use in date extraction
+          
+          // Store caller info for assignee resolution (from TelegramMessageEvent)
+          if (event.callerInfo) {
+            callerInfo = event.callerInfo;
+          }
 
           if (messageQueue.length === 0 && !instruction) {
             await sendMessage({
@@ -485,6 +585,18 @@ Send /start to create a fresh session.`,
               currentAction = await withCyclingReaction(chatId, event.messageId, processWithAI);
             } else {
               currentAction = await processWithAI();
+            }
+
+            // Auto-resolve assignee for tasks (handles "me", empty, or name)
+            if (currentAction.intent === "create_task" && schema) {
+              const currentSchema = schema as AttioSchema;
+              const assigneeName = String(currentAction.extractedData.assignee || currentAction.extractedData.assignee_email || "");
+              const resolved = await resolveAssignee(assigneeName, callerInfo, currentSchema.workspaceMembers, true);
+              if (resolved) {
+                currentAction.extractedData.assignee_id = resolved.memberId;
+                currentAction.extractedData.assignee = resolved.memberName;
+                currentAction.extractedData.assignee_email = resolved.email;
+              }
             }
 
             state = "awaiting_confirmation";
@@ -547,6 +659,18 @@ Send /start to create a fresh session.`,
               currentAction = await withCyclingReaction(chatId, event.messageId, processWithAI);
             } else {
               currentAction = await processWithAI();
+            }
+
+            // Auto-resolve assignee for tasks (handles "me", empty, or name)
+            if (currentAction.intent === "create_task" && schema) {
+              const currentSchema = schema as AttioSchema;
+              const assigneeName = String(currentAction.extractedData.assignee || currentAction.extractedData.assignee_email || "");
+              const resolved = await resolveAssignee(assigneeName, callerInfo, currentSchema.workspaceMembers, true);
+              if (resolved) {
+                currentAction.extractedData.assignee_id = resolved.memberId;
+                currentAction.extractedData.assignee = resolved.memberName;
+                currentAction.extractedData.assignee_email = resolved.email;
+              }
             }
 
             state = "awaiting_confirmation";
@@ -649,6 +773,48 @@ Send /start to create a fresh session.`,
             await sendMessage({
               chatId,
               text: `❌ Failed to process: ${errorMsg.substring(0, 200)}`,
+            });
+            state = "awaiting_confirmation";
+          }
+          continue;
+        }
+
+        // Handle assignee name input - use LLM to resolve
+        if (state === "awaiting_assignee_input" && currentAction && schema) {
+          const currentSchema = schema as AttioSchema;
+          try {
+            const resolved = await resolveAssignee(text, callerInfo, currentSchema.workspaceMembers, false);
+
+            if (resolved) {
+              currentAction.extractedData.assignee_id = resolved.memberId;
+              currentAction.extractedData.assignee = resolved.memberName;
+              currentAction.extractedData.assignee_email = resolved.email;
+
+              state = "awaiting_confirmation";
+              const suggestionText = formatSuggestedAction(currentAction);
+
+              lastBotMessageId = await sendMessage({
+                chatId,
+                text: suggestionText,
+                replyMarkup: {
+                  inline_keyboard: buildAISuggestionKeyboard(false, currentAction.intent),
+                },
+              });
+            } else {
+              await sendMessage({
+                chatId,
+                text: `❌ Could not find a matching team member for "${text}". Please try again or select from the list.`,
+                replyMarkup: {
+                  inline_keyboard: buildMemberSelectionKeyboard(currentSchema.workspaceMembers, 0),
+                },
+              });
+              state = "awaiting_assignee_selection";
+            }
+          } catch (error) {
+            const errorMsg = error instanceof Error ? error.message : String(error);
+            await sendMessage({
+              chatId,
+              text: `❌ Failed to resolve assignee: ${errorMsg.substring(0, 200)}`,
             });
             state = "awaiting_confirmation";
           }

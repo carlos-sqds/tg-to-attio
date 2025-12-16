@@ -126,7 +126,7 @@ export async function withCyclingReaction<T>(
   messageId: number,
   operation: () => Promise<T>
 ): Promise<T> {
-  "use step";
+  // NOTE: No "use step" - this function accepts a callback which can't be serialized
   
   let currentIndex = 0;
   let stopped = false;

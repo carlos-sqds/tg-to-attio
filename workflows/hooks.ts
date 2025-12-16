@@ -7,6 +7,10 @@ export interface CallerInfo {
   username?: string;
 }
 
+export interface TelegramTerminateEvent {
+  type: "terminate";
+}
+
 export interface TelegramMessageEvent {
   type: "command" | "forwarded_message" | "text_message";
   text?: string;
@@ -22,6 +26,6 @@ export interface TelegramCallbackEvent {
   callbackQueryId: string;
 }
 
-export type TelegramEvent = TelegramMessageEvent | TelegramCallbackEvent;
+export type TelegramEvent = TelegramTerminateEvent | TelegramMessageEvent | TelegramCallbackEvent;
 
 export const telegramHook = defineHook<TelegramEvent>();

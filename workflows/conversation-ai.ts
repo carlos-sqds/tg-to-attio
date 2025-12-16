@@ -78,6 +78,12 @@ Commands:
     try {
       logger.info("Processing event", { userId, eventType: event.type, state });
 
+      // Handle terminate signal (from /start creating new session)
+      if (event.type === "terminate") {
+        logger.info("Workflow terminated by /start", { userId });
+        break; // Exit gracefully, releases hook token
+      }
+
       // Handle callback queries
       if (event.type === "callback_query") {
         await answerCallbackQuery(event.callbackQueryId);

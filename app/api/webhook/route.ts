@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { start, getHookByToken, Run } from "workflow/api";
+import { start } from "workflow/api";
 import { logger } from "@/src/lib/logger";
 import { telegramHook, type TelegramEvent } from "@/workflows/hooks";
 import { conversationWorkflowAI } from "@/workflows/conversation-ai";
@@ -166,19 +166,16 @@ export async function POST(request: NextRequest) {
       // /start - Start a new workflow (workflow will send welcome)
       if (text === "/start") {
         try {
-          // Cancel any existing workflow for this user
+          // Gracefully terminate any existing workflow for this user
+          // (Run.cancel() doesn't release hook tokens, so we use terminate event)
           const hookToken = `ai4-${userId}`;
           try {
-            const existingHook = await getHookByToken(hookToken);
-            if (existingHook?.runId) {
-              const existingRun = new Run(existingHook.runId);
-              await existingRun.cancel();
-              logger.info("Cancelled existing workflow", { userId, runId: existingHook.runId });
-              // Wait for hook cleanup before starting new workflow
-              await new Promise(resolve => setTimeout(resolve, 500));
-            }
+            await telegramHook.resume(hookToken, { type: "terminate" });
+            logger.info("Sent terminate to existing workflow", { userId });
+            // Wait for old workflow to process terminate and release hook
+            await new Promise(resolve => setTimeout(resolve, 1000));
           } catch {
-            // No existing hook found, that's fine
+            // No existing workflow, that's fine
           }
 
           const run = await start(conversationWorkflowAI, [userId, chatId]);

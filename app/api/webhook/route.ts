@@ -104,7 +104,7 @@ function extractForwardedMessage(message: TelegramMessage): ForwardedMessageData
 }
 
 async function tryResumeWorkflow(userId: number, event: TelegramEvent): Promise<boolean> {
-  const token = `ai4-${userId}`;
+  const token = `ai5-${userId}`;
   
   // Retry logic to handle race condition where workflow hasn't created hook yet
   const maxRetries = 3;
@@ -168,7 +168,7 @@ export async function POST(request: NextRequest) {
         try {
           // Gracefully terminate any existing workflow for this user
           // (Run.cancel() doesn't release hook tokens, so we use terminate event)
-          const hookToken = `ai4-${userId}`;
+          const hookToken = `ai5-${userId}`;
           try {
             await telegramHook.resume(hookToken, { type: "terminate" });
             logger.info("Sent terminate to existing workflow", { userId });

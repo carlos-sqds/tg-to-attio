@@ -72,7 +72,7 @@ Commands:
 
   logger.info("AI Workflow started", { userId });
 
-  const events = telegramHook.create({ token: `ai4-${userId}` });
+  const events = telegramHook.create({ token: `ai5-${userId}` });
 
   for await (const event of events) {
     try {

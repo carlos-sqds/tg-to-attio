@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { start } from "workflow/api";
+import { start, getHookByToken, Run } from "workflow/api";
 import { logger } from "@/src/lib/logger";
 import { telegramHook, type TelegramEvent } from "@/workflows/hooks";
 import { conversationWorkflowAI } from "@/workflows/conversation-ai";
@@ -104,7 +104,7 @@ function extractForwardedMessage(message: TelegramMessage): ForwardedMessageData
 }
 
 async function tryResumeWorkflow(userId: number, event: TelegramEvent): Promise<boolean> {
-  const token = `ai5-${userId}`;
+  const token = `ai6-${userId}`;
   
   // Retry logic to handle race condition where workflow hasn't created hook yet
   const maxRetries = 3;
@@ -165,22 +165,39 @@ export async function POST(request: NextRequest) {
 
       // /start - Start a new workflow (workflow will send welcome)
       if (text === "/start") {
+        console.log("[WEBHOOK] /start received", { userId, chatId });
         try {
-          // Gracefully terminate any existing workflow for this user
-          // (Run.cancel() doesn't release hook tokens, so we use terminate event)
-          const hookToken = `ai5-${userId}`;
+          const hookToken = `ai6-${userId}`;
+          console.log("[WEBHOOK] Attempting to terminate existing workflow", { hookToken });
+          
+          // Try graceful terminate first (works for new workflows with terminate handler)
           try {
             await telegramHook.resume(hookToken, { type: "terminate" });
+            console.log("[WEBHOOK] Terminate sent successfully");
             logger.info("Sent terminate to existing workflow", { userId });
-            // Wait for old workflow to process terminate and release hook
-            await new Promise(resolve => setTimeout(resolve, 1000));
-          } catch {
-            // No existing workflow, that's fine
+            await new Promise(resolve => setTimeout(resolve, 500));
+          } catch (terminateError) {
+            console.log("[WEBHOOK] Graceful terminate failed, trying force cancel", { error: String(terminateError) });
+            // Fall back to Run.cancel() for old workflows that don't have terminate handler
+            try {
+              const existingHook = await getHookByToken(hookToken);
+              if (existingHook?.runId) {
+                console.log("[WEBHOOK] Found existing hook, canceling run", { runId: existingHook.runId });
+                await new Run(existingHook.runId).cancel();
+                logger.info("Force cancelled existing workflow", { userId, runId: existingHook.runId });
+                await new Promise(resolve => setTimeout(resolve, 500));
+              }
+            } catch (cancelError) {
+              console.log("[WEBHOOK] No existing workflow to cancel", { error: String(cancelError) });
+            }
           }
 
+          console.log("[WEBHOOK] Starting new workflow...");
           const run = await start(conversationWorkflowAI, [userId, chatId]);
+          console.log("[WEBHOOK] Workflow started", { runId: run.runId });
           logger.info("Started new AI workflow", { userId, runId: run.runId });
         } catch (error) {
+          console.log("[WEBHOOK] Failed to start workflow", { error: String(error) });
           logger.error("Failed to start workflow", { userId, error: String(error) });
           await sendTelegramMessage(chatId, "Failed to start. Please try again.");
         }

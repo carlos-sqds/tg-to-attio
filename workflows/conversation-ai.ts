@@ -72,7 +72,7 @@ Commands:
 
   logger.info("AI Workflow started", { userId });
 
-  const events = telegramHook.create({ token: `ai5-${userId}` });
+  const events = telegramHook.create({ token: `ai6-${userId}` });
 
   for await (const event of events) {
     try {
@@ -564,40 +564,44 @@ Send /start to create a fresh session.`,
 
           // Process with AI
           state = "processing_ai";
+          console.log("[WORKFLOW] Starting AI processing", { hasMessageId: !!event.messageId, queueLength: messageQueue.length });
 
           try {
-            // Run AI processing with cycling reaction animation
-            const processWithAI = async () => {
-              // Lazy load schema (cached for 5 minutes)
-              if (!schema) {
-                schema = await fetchFullSchemaCached();
-              }
-
-              return await analyzeIntent({
-                messages: messageQueue.map((m) => ({
-                  text: m.text,
-                  chatName: m.chatName,
-                  date: m.date,
-                  senderUsername: m.senderUsername,
-                  senderFirstName: m.senderFirstName,
-                  senderLastName: m.senderLastName,
-                })),
-                instruction,
-                schema,
-              });
-            };
-
-            if (event.messageId) {
-              currentAction = await withCyclingReaction(chatId, event.messageId, processWithAI);
-            } else {
-              currentAction = await processWithAI();
+            // Lazy load schema first (outside the callback)
+            console.log("[WORKFLOW] Fetching schema...");
+            if (!schema) {
+              schema = await fetchFullSchemaCached();
             }
+            console.log("[WORKFLOW] Schema loaded", { 
+              objectCount: schema.objects.length, 
+              memberCount: schema.workspaceMembers.length 
+            });
+
+            // Prepare messages for AI
+            const messagesForAI = messageQueue.map((m) => ({
+              text: m.text,
+              chatName: m.chatName,
+              date: m.date,
+              senderUsername: m.senderUsername,
+              senderFirstName: m.senderFirstName,
+              senderLastName: m.senderLastName,
+            }));
+
+            console.log("[WORKFLOW] Calling analyzeIntent...");
+            currentAction = await analyzeIntent({
+              messages: messagesForAI,
+              instruction,
+              schema,
+            });
+            console.log("[WORKFLOW] analyzeIntent completed", { intent: currentAction.intent });
 
             // Auto-resolve assignee for tasks (handles "me", empty, or name)
             if (currentAction.intent === "create_task" && schema) {
+              console.log("[WORKFLOW] Resolving assignee for task...");
               const currentSchema = schema as AttioSchema;
               const assigneeName = String(currentAction.extractedData.assignee || currentAction.extractedData.assignee_email || "");
               const resolved = await resolveAssignee(assigneeName, callerInfo, currentSchema.workspaceMembers, true);
+              console.log("[WORKFLOW] Assignee resolved", { assigneeName, resolved: !!resolved });
               if (resolved) {
                 currentAction.extractedData.assignee_id = resolved.memberId;
                 currentAction.extractedData.assignee = resolved.memberName;

@@ -106,14 +106,23 @@ function extractForwardedMessage(message: TelegramMessage): ForwardedMessageData
 async function tryResumeWorkflow(userId: number, event: TelegramEvent): Promise<boolean> {
   const token = `ai4-${userId}`;
   
-  try {
-    await telegramHook.resume(token, event);
-    logger.info("Resumed workflow", { userId, eventType: event.type });
-    return true;
-  } catch (error) {
-    logger.info("Failed to resume workflow", { userId, error: String(error) });
-    return false;
+  // Retry logic to handle race condition where workflow hasn't created hook yet
+  const maxRetries = 3;
+  const retryDelay = 300; // ms
+  
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      await telegramHook.resume(token, event);
+      logger.info("Resumed workflow", { userId, eventType: event.type, attempt });
+      return true;
+    } catch (error) {
+      logger.info("Failed to resume workflow", { userId, error: String(error), attempt, maxRetries });
+      if (attempt < maxRetries) {
+        await new Promise(resolve => setTimeout(resolve, retryDelay));
+      }
+    }
   }
+  return false;
 }
 
 export async function POST(request: NextRequest) {
@@ -165,6 +174,8 @@ export async function POST(request: NextRequest) {
               const existingRun = new Run(existingHook.runId);
               await existingRun.cancel();
               logger.info("Cancelled existing workflow", { userId, runId: existingHook.runId });
+              // Wait for hook cleanup before starting new workflow
+              await new Promise(resolve => setTimeout(resolve, 500));
             }
           } catch {
             // No existing hook found, that's fine

@@ -244,13 +244,15 @@ export async function createDeal(input: CreateDealInput): Promise<ActionResult> 
 
   // Validate stage against available options, fallback to first valid stage
   const validStages = await getValidDealStages(apiKey);
+  console.log("[DEAL] Valid stages:", validStages);
+  console.log("[DEAL] Input stage:", input.stage);
   if (input.stage && validStages.includes(input.stage)) {
     values.stage = input.stage;
   } else if (validStages.length > 0) {
     values.stage = validStages[0];
-    if (input.stage) {
-      console.log(`[DEAL] Stage "${input.stage}" invalid, using: ${validStages[0]}`);
-    }
+    console.log(`[DEAL] Stage "${input.stage}" invalid, using: ${validStages[0]}`);
+  } else {
+    console.log("[DEAL] WARNING: No valid stages found, stage will be empty");
   }
 
   if (input.companyId) {
@@ -283,6 +285,8 @@ export async function createDeal(input: CreateDealInput): Promise<ActionResult> 
   if (input.ownerEmail) {
     values.owner = input.ownerEmail;
   }
+
+  console.log("[DEAL] Creating deal with values:", JSON.stringify(values, null, 2));
 
   try {
     const response = await attioRequest<AttioRecordResponse>("/objects/deals/records", apiKey, {
@@ -801,6 +805,7 @@ export async function executeActionWithNote(
         stage: String(data.stage || ""),
         companyName,
         companyId,
+        ownerEmail: String(data.owner || data.ownerEmail || data.owner_email || ""),
       });
       parentObject = "deals";
       parentRecordId = result.recordId;

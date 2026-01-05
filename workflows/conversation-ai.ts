@@ -60,13 +60,17 @@ export async function conversationWorkflowAI(userId: number, chatId: number) {
 • Auto-extract names, emails, phones, values
 
 📋 How to use:
+
+⚡ Quick capture (single message):
+Forward a message and add your instruction as caption
+Example: forward + "create contact"
+
+📦 Batch capture (multiple messages):
 1️⃣ Forward messages from any conversation
 2️⃣ Send /done followed by your instruction
-   Examples:
    • /done create a contact
    • /done add to sales pipeline
    • /done create a $50k deal
-   • /done remind Sarah to follow up Friday
 3️⃣ Review and confirm
 
 Commands: /done /clear /cancel /session /help`,

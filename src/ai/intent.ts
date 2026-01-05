@@ -7,7 +7,7 @@ import {
 } from "@/src/services/attio/schema-types";
 import { buildSystemPrompt, buildUserPrompt } from "./prompts";
 
-const DEFAULT_MODEL = "anthropic/claude-3-5-sonnet-20241022";
+const DEFAULT_MODEL = "anthropic/claude-3-5-haiku-20241022";
 
 export interface AnalyzeIntentOptions {
   model?: string;
@@ -71,9 +71,36 @@ export async function analyzeIntentSimple(
         pluralNoun: "People",
         createdAt: "",
         attributes: [
-          { id: "1", apiSlug: "name", title: "Name", type: "personal-name" as const, isRequired: true, isWritable: true, isUnique: false, isArchived: false },
-          { id: "2", apiSlug: "email_addresses", title: "Email", type: "email-addresses" as const, isRequired: false, isWritable: true, isUnique: false, isArchived: false },
-          { id: "3", apiSlug: "phone_numbers", title: "Phone", type: "phone-numbers" as const, isRequired: false, isWritable: true, isUnique: false, isArchived: false },
+          {
+            id: "1",
+            apiSlug: "name",
+            title: "Name",
+            type: "personal-name" as const,
+            isRequired: true,
+            isWritable: true,
+            isUnique: false,
+            isArchived: false,
+          },
+          {
+            id: "2",
+            apiSlug: "email_addresses",
+            title: "Email",
+            type: "email-addresses" as const,
+            isRequired: false,
+            isWritable: true,
+            isUnique: false,
+            isArchived: false,
+          },
+          {
+            id: "3",
+            apiSlug: "phone_numbers",
+            title: "Phone",
+            type: "phone-numbers" as const,
+            isRequired: false,
+            isWritable: true,
+            isUnique: false,
+            isArchived: false,
+          },
         ],
       },
       {
@@ -84,8 +111,26 @@ export async function analyzeIntentSimple(
         pluralNoun: "Companies",
         createdAt: "",
         attributes: [
-          { id: "1", apiSlug: "name", title: "Name", type: "text" as const, isRequired: true, isWritable: true, isUnique: false, isArchived: false },
-          { id: "2", apiSlug: "domains", title: "Domain", type: "domain" as const, isRequired: false, isWritable: true, isUnique: false, isArchived: false },
+          {
+            id: "1",
+            apiSlug: "name",
+            title: "Name",
+            type: "text" as const,
+            isRequired: true,
+            isWritable: true,
+            isUnique: false,
+            isArchived: false,
+          },
+          {
+            id: "2",
+            apiSlug: "domains",
+            title: "Domain",
+            type: "domain" as const,
+            isRequired: false,
+            isWritable: true,
+            isUnique: false,
+            isArchived: false,
+          },
         ],
       },
       {
@@ -96,8 +141,26 @@ export async function analyzeIntentSimple(
         pluralNoun: "Deals",
         createdAt: "",
         attributes: [
-          { id: "1", apiSlug: "name", title: "Name", type: "text" as const, isRequired: true, isWritable: true, isUnique: false, isArchived: false },
-          { id: "2", apiSlug: "value", title: "Value", type: "currency" as const, isRequired: false, isWritable: true, isUnique: false, isArchived: false },
+          {
+            id: "1",
+            apiSlug: "name",
+            title: "Name",
+            type: "text" as const,
+            isRequired: true,
+            isWritable: true,
+            isUnique: false,
+            isArchived: false,
+          },
+          {
+            id: "2",
+            apiSlug: "value",
+            title: "Value",
+            type: "currency" as const,
+            isRequired: false,
+            isWritable: true,
+            isUnique: false,
+            isArchived: false,
+          },
         ],
       },
     ],

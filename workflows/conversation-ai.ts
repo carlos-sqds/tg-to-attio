@@ -126,6 +126,14 @@ Commands: /done /clear /cancel /session /help`,
 
           try {
             const formatted = formatMessagesForSingleNote(messageQueue);
+
+            // Resolve caller's email for ownership (deals, etc.)
+            let callerEmail: string | undefined;
+            if (callerInfo && schema) {
+              const resolved = await resolveAssignee("", callerInfo, schema.workspaceMembers, true);
+              callerEmail = resolved?.email;
+            }
+
             const result = await executeActionWithNote(
               {
                 intent: currentAction.intent,
@@ -135,6 +143,7 @@ Commands: /done /clear /cancel /session /help`,
                 targetList: currentAction.targetList,
                 prerequisiteActions: currentAction.prerequisiteActions,
                 originalInstruction: currentInstruction || undefined,
+                callerEmail,
               },
               formatted.content
             );

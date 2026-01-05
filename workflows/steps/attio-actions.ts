@@ -220,10 +220,10 @@ export interface CreateDealInput {
   name: string;
   value?: number;
   currency?: string;
-  stage?: string;
   companyName?: string;
   companyId?: string;
   ownerEmail?: string;
+  // Note: stage is NOT configurable - always uses workspace's first valid stage
 }
 
 export async function createDeal(input: CreateDealInput): Promise<ActionResult> {
@@ -242,17 +242,12 @@ export async function createDeal(input: CreateDealInput): Promise<ActionResult> 
     values.value = input.value;
   }
 
-  // Validate stage against available options, fallback to first valid stage
+  // Always use first valid stage - don't rely on AI guessing stage names
   const validStages = await getValidDealStages(apiKey);
-  console.log("[DEAL] Valid stages:", validStages);
-  console.log("[DEAL] Input stage:", input.stage);
-  if (input.stage && validStages.includes(input.stage)) {
-    values.stage = input.stage;
-  } else if (validStages.length > 0) {
+  if (validStages.length > 0) {
     values.stage = validStages[0];
-    console.log(`[DEAL] Stage "${input.stage}" invalid, using: ${validStages[0]}`);
   } else {
-    console.log("[DEAL] WARNING: No valid stages found, stage will be empty");
+    console.warn("[DEAL] No valid stages found in workspace");
   }
 
   if (input.companyId) {
@@ -285,8 +280,6 @@ export async function createDeal(input: CreateDealInput): Promise<ActionResult> 
   if (input.ownerEmail) {
     values.owner = input.ownerEmail;
   }
-
-  console.log("[DEAL] Creating deal with values:", JSON.stringify(values, null, 2));
 
   try {
     const response = await attioRequest<AttioRecordResponse>("/objects/deals/records", apiKey, {
@@ -648,6 +641,7 @@ export async function executeActionWithNote(
       extractedData: Record<string, unknown>;
     }>;
     originalInstruction?: string; // User's raw instruction for date extraction
+    callerEmail?: string; // Email of the Telegram user who initiated the action
   },
   messagesContent: string
 ): Promise<ActionResult> {
@@ -798,14 +792,15 @@ export async function executeActionWithNote(
         }
       }
 
+      // Owner defaults to caller (the Telegram user creating the deal)
+      // Stage is validated and defaulted in createDeal - don't pass AI's guess
       result = await createDeal({
         name: String(data.name || ""),
         value: value as number | undefined,
         currency: String(currency || "USD"),
-        stage: String(data.stage || ""),
         companyName,
         companyId,
-        ownerEmail: String(data.owner || data.ownerEmail || data.owner_email || ""),
+        ownerEmail: action.callerEmail || "",
       });
       parentObject = "deals";
       parentRecordId = result.recordId;

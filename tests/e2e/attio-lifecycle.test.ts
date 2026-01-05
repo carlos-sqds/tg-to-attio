@@ -340,9 +340,7 @@ describe("E2E Attio Lifecycle", () => {
     const searchData = {
       filter: {
         name: {
-          value: {
-            $contains: TEST_PREFIX,
-          },
+          $contains: TEST_PREFIX,
         },
       },
       limit: 10,

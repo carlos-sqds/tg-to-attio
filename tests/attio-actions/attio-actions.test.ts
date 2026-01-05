@@ -196,6 +196,29 @@ describe("Attio Actions", () => {
       const dealBody = JSON.parse(mockFetch.mock.calls[1][1].body);
       expect(dealBody.data.values.associated_company.target_record_id).toBe("found-company");
     });
+
+    it("uses correct filter structure when searching for company (no value wrapper)", async () => {
+      // First call: company search
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ data: [] }),
+      });
+      // Second call: create deal
+      mockSuccessResponse({
+        id: { record_id: "deal-123" },
+        web_url: "https://app.attio.com/deals/deal-123",
+      });
+
+      await createDeal({ name: "Deal", companyName: "TechCorp" });
+
+      // Verify the company search filter structure
+      const searchBody = JSON.parse(mockFetch.mock.calls[0][1].body);
+      expect(searchBody.filter).toEqual({
+        name: { $contains: "TechCorp" },
+      });
+      // Make sure there's no extra "value" wrapper
+      expect(searchBody.filter.name.value).toBeUndefined();
+    });
   });
 
   describe("createTask", () => {
@@ -355,6 +378,38 @@ describe("Attio Actions", () => {
       const results = await searchRecords("companies", "Test");
 
       expect(results[0].name).toBe("Unknown");
+    });
+
+    it("sends correct filter structure without extra value wrapper", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ data: [] }),
+      });
+
+      await searchRecords("companies", "TechCorp");
+
+      const callBody = JSON.parse(mockFetch.mock.calls[0][1].body);
+
+      // Filter should be { name: { $contains: "TechCorp" } }
+      // NOT { name: { value: { $contains: "TechCorp" } } }
+      expect(callBody.filter).toEqual({
+        name: { $contains: "TechCorp" },
+      });
+      expect(callBody.filter.name.value).toBeUndefined();
+    });
+
+    it("performs case-insensitive search (filter uses $contains)", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ data: [] }),
+      });
+
+      await searchRecords("companies", "techcorp");
+
+      const callBody = JSON.parse(mockFetch.mock.calls[0][1].body);
+
+      // $contains operator is case-insensitive in Attio API
+      expect(callBody.filter.name.$contains).toBe("techcorp");
     });
   });
 
@@ -516,6 +571,161 @@ describe("Attio Actions", () => {
 
       expect(result.success).toBe(true);
       expect(result.recordId).toBe("task-123");
+    });
+
+    it("uses correct filter structure for company search in create_deal (no value wrapper)", async () => {
+      // Search for company
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ data: [] }),
+      });
+      // Create deal
+      mockSuccessResponse({
+        id: { record_id: "deal-123" },
+        web_url: "https://app.attio.com/deals/deal-123",
+      });
+      // Create note
+      mockSuccessResponse({ id: { note_id: "note-1" } });
+
+      await executeActionWithNote(
+        {
+          intent: "create_deal",
+          extractedData: {
+            name: "Deal",
+            associated_company: "TechCorp",
+          },
+          noteTitle: "Notes",
+          targetObject: "deals",
+        },
+        "Content"
+      );
+
+      // First call should be the company search
+      const searchBody = JSON.parse(mockFetch.mock.calls[0][1].body);
+      expect(searchBody.filter).toEqual({
+        name: { $contains: "TechCorp" },
+      });
+      expect(searchBody.filter.name.value).toBeUndefined();
+    });
+
+    it("uses correct filter structure for company search in create_person (no value wrapper)", async () => {
+      // Search for company
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            data: [
+              {
+                id: { record_id: "company-1" },
+                values: { name: [{ value: "Acme Corp" }] },
+              },
+            ],
+          }),
+      });
+      // Create person
+      mockSuccessResponse({
+        id: { record_id: "person-123" },
+        web_url: "https://app.attio.com/people/person-123",
+      });
+      // Create note
+      mockSuccessResponse({ id: { note_id: "note-1" } });
+
+      await executeActionWithNote(
+        {
+          intent: "create_person",
+          extractedData: {
+            name: "John Doe",
+            associated_company: "Acme",
+          },
+          noteTitle: "Notes",
+          targetObject: "people",
+        },
+        "Content"
+      );
+
+      // First call should be the company search
+      const searchBody = JSON.parse(mockFetch.mock.calls[0][1].body);
+      expect(searchBody.filter).toEqual({
+        name: { $contains: "Acme" },
+      });
+      expect(searchBody.filter.name.value).toBeUndefined();
+    });
+
+    it("uses correct filter structure for company search in add_note (no value wrapper)", async () => {
+      // Search for company
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            data: [
+              {
+                id: { record_id: "company-1" },
+                values: { name: [{ value: "Acme Corp" }] },
+              },
+            ],
+          }),
+      });
+      // Create note
+      mockSuccessResponse({ id: { note_id: "note-1" } });
+
+      await executeActionWithNote(
+        {
+          intent: "add_note",
+          extractedData: {
+            company: "Acme",
+          },
+          noteTitle: "Meeting Notes",
+          targetObject: "companies",
+        },
+        "Note content"
+      );
+
+      // First call should be the company search
+      const searchBody = JSON.parse(mockFetch.mock.calls[0][1].body);
+      expect(searchBody.filter).toEqual({
+        name: { $contains: "Acme" },
+      });
+      expect(searchBody.filter.name.value).toBeUndefined();
+    });
+  });
+
+  describe("Attio API Filter Structure Validation", () => {
+    it("all company searches use $contains without value wrapper", async () => {
+      // This test documents the expected filter structure for Attio API
+      // Filter structure per Attio docs: { name: { $contains: "query" } }
+      // NOT: { name: { value: { $contains: "query" } } }
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ data: [] }),
+      });
+
+      // Test searchRecords directly
+      await searchRecords("companies", "TestCompany");
+
+      const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+      expect(body.filter.name.$contains).toBe("TestCompany");
+      expect(body.filter.name.value).toBeUndefined();
+    });
+
+    it("searchRecords works for different object types", async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            data: [
+              {
+                id: { record_id: "person-1" },
+                values: { name: [{ full_name: "John Doe" }] },
+              },
+            ],
+          }),
+      });
+
+      const results = await searchRecords("people", "John");
+
+      expect(mockFetch.mock.calls[0][0]).toContain("/objects/people/records/query");
+      expect(results[0].name).toBe("John Doe");
     });
   });
 });

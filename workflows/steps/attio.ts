@@ -14,7 +14,7 @@ async function attioRequest<T>(
   options: RequestInit = {}
 ): Promise<T> {
   const url = `${ATTIO_BASE_URL}${endpoint}`;
-  
+
   console.log("[ATTIO_REQUEST] Starting request to:", endpoint);
 
   const headers = {
@@ -39,7 +39,10 @@ async function attioRequest<T>(
 
     return response.json() as Promise<T>;
   } catch (error) {
-    console.error("[ATTIO_REQUEST] Fetch error:", error instanceof Error ? error.message : String(error));
+    console.error(
+      "[ATTIO_REQUEST] Fetch error:",
+      error instanceof Error ? error.message : String(error)
+    );
     throw error;
   }
 }
@@ -49,7 +52,7 @@ export async function searchCompanies(query: string): Promise<CompanySearchResul
 
   // Access env vars directly inside step function
   const apiKey = process.env.ATTIO_API_KEY;
-  
+
   console.log("[ATTIO] searchCompanies called with query:", query);
   console.log("[ATTIO] API key present:", !!apiKey);
   console.log("[ATTIO] API key prefix:", apiKey?.substring(0, 8) || "MISSING");
@@ -61,9 +64,7 @@ export async function searchCompanies(query: string): Promise<CompanySearchResul
   const searchInput: SearchCompaniesInput = {
     filter: {
       name: {
-        value: {
-          $contains: query,
-        },
+        $contains: query,
       },
     },
     limit: 10,
@@ -89,11 +90,9 @@ export async function searchCompanies(query: string): Promise<CompanySearchResul
       let location: string | undefined;
       const locationData = company.values.locations?.[0];
       if (locationData) {
-        const parts = [
-          locationData.locality,
-          locationData.region,
-          locationData.country,
-        ].filter(Boolean);
+        const parts = [locationData.locality, locationData.region, locationData.country].filter(
+          Boolean
+        );
         location = parts.length > 0 ? parts.join(", ") : undefined;
       }
 
@@ -117,23 +116,19 @@ export async function createNote(input: CreateNoteInput): Promise<AttioNote> {
 
   // Access env vars directly inside step function
   const apiKey = process.env.ATTIO_API_KEY;
-  
+
   console.log("[ATTIO] Creating note for:", input.parent_record_id);
 
   if (!apiKey) {
     throw new Error("ATTIO_API_KEY not configured");
   }
 
-  const response = await attioRequest<{ data: AttioNote }>(
-    "/notes",
-    apiKey,
-    {
-      method: "POST",
-      body: JSON.stringify({
-        data: input,
-      }),
-    }
-  );
+  const response = await attioRequest<{ data: AttioNote }>("/notes", apiKey, {
+    method: "POST",
+    body: JSON.stringify({
+      data: input,
+    }),
+  });
 
   console.log("[ATTIO] Note created:", response.data.id.note_id);
 

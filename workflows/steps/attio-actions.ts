@@ -234,7 +234,7 @@ export async function createDeal(input: CreateDealInput): Promise<ActionResult> 
       {
         method: "POST",
         body: JSON.stringify({
-          filter: { name: { value: { $contains: input.companyName } } },
+          filter: { name: { $contains: input.companyName } },
           limit: 1,
         }),
       }
@@ -570,7 +570,7 @@ export async function searchRecords(objectSlug: string, query: string): Promise<
     method: "POST",
     body: JSON.stringify({
       filter: {
-        name: { value: { $contains: query } },
+        name: { $contains: query },
       },
       limit: 10,
     }),

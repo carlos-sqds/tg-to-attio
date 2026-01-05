@@ -41,9 +41,10 @@ export interface CreateNoteInput {
 export interface SearchCompaniesInput {
   filter?: {
     name?: {
-      value?: {
-        $contains?: string;
-      };
+      $contains?: string;
+      $eq?: string;
+      $starts_with?: string;
+      $ends_with?: string;
     };
   };
   sorts?: Array<{

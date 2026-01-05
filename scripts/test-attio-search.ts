@@ -5,14 +5,14 @@ const ATTIO_BASE_URL = "https://api.attio.com/v2";
 
 async function testSearch(query: string) {
   const apiKey = process.env.ATTIO_API_KEY;
-  
+
   if (!apiKey) {
     console.error("ATTIO_API_KEY not set");
     process.exit(1);
   }
 
   console.log("Searching for:", query);
-  
+
   const response = await fetch(`${ATTIO_BASE_URL}/objects/companies/records/query`, {
     method: "POST",
     headers: {
@@ -22,9 +22,7 @@ async function testSearch(query: string) {
     body: JSON.stringify({
       filter: {
         name: {
-          value: {
-            $contains: query,
-          },
+          $contains: query,
         },
       },
       limit: 10,

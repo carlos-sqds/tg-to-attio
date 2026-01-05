@@ -11,7 +11,15 @@
 
 ## What It Does
 
-This bot allows you to forward messages from Telegram group chats or direct messages and seamlessly add them to the appropriate company record in your Attio CRM. Perfect for teams that communicate with customers through Telegram and want to keep everything organized in their CRM.
+This bot allows you to forward messages from Telegram and use **natural language instructions** to create any record in your Attio CRM. Powered by AI intent analysis, it understands what you want to do and extracts the relevant data automatically.
+
+### AI-Powered Capabilities
+
+- **AI Intent Analysis** - Natural language instructions processed by Claude
+- **Supported Actions**: `create_person`, `create_company`, `create_deal`, `add_to_list`, `create_task`, `add_note`, `update_record`, `search_record`
+- **Smart Extraction** - Names, emails, phones, company info, deal values from messages
+- **Prerequisite Chaining** - Auto-creates companies before linking people/deals
+- **Clarification Flow** - Interactive prompts for missing/ambiguous data
 
 ### Use Case
 
@@ -19,37 +27,22 @@ Many teams use Telegram extensively to communicate with customers. Important con
 
 ## How It Works
 
-**Single Message:**
+**AI-Powered Flow:**
 ```
-1. Forward a message to the bot
+1. Forward messages → Bot queues them
    ↓
-2. Send /done
+2. /done <instruction> → AI analyzes intent with your Attio schema
+   Example: /done create a person and add to sales pipeline
    ↓
-3. Bot asks: "Which company is this for?"
+3. Review suggestion → Confirm, edit fields, or provide clarifications
    ↓
-4. Search or select from recent companies
-   ↓
-5. Review and confirm
-   ↓
-6. ✅ Message added to Attio as a note
+4. Execute → Record created in Attio with note attached
 ```
 
-**Bulk Messages (10+ at once):**
-```
-1. Forward message 1 → Bot: "📥 Message queued (1)"
-2. Forward message 2 → Bot: "📥 Message queued (2)"
-3. Forward message 3-10...
-   ↓
-4. Send /done when you're ready
-   ↓
-5. Bot: "I received 10 messages. Which company?"
-   ↓
-6. Select company once
-   ↓
-7. Confirm batch
-   ↓
-8. ✅ All 10 messages added to Attio
-```
+**Examples:**
+- `/done add this person to the leads list` - Creates person, adds to list
+- `/done create a deal for $50k` - Creates deal with value
+- `/done just save as a note for Acme Corp` - Adds note to company
 
 The bot captures all important context:
 - Original sender username
@@ -67,6 +60,8 @@ The bot captures all important context:
 | **Hosting** | [Vercel Serverless](https://vercel.com) | Zero config, free tier, instant deploys |
 | **Session Storage** | [Upstash Redis](https://upstash.com) | Serverless-native, generous free tier |
 | **CRM** | [Attio API](https://attio.com) | Powerful API for company records and notes |
+| **AI SDK** | [Vercel AI SDK](https://sdk.vercel.ai) with Gateway | Claude 3.5 Sonnet for intent analysis |
+| **Durable Execution** | [Vercel Workflows](https://vercel.com/docs/workflow-sdk) | State management across async operations |
 
 ### Why This Stack?
 
@@ -220,25 +215,66 @@ Once deployed:
 - `/cancel` - Cancel current operation
 - `/help` - Show help message
 
+## Testing Without Telegram
+
+Run tests locally without needing a Telegram bot or live connections.
+
+### Unit Tests (No External Dependencies)
+```bash
+npm run test:attio        # Deadline parsing, company input parsing
+npm run test:run          # All unit tests
+```
+
+### AI Intent Tests (Requires AI_GATEWAY_API_KEY)
+```bash
+npm run test:ai           # Full AI intent classification suite
+npm run test:ai:smoke     # Quick 4-scenario smoke test
+```
+
+### End-to-End Attio Tests (Requires ATTIO_API_KEY)
+**Planned** - Test complete record lifecycle:
+```bash
+npm run test:e2e          # Full integration tests
+```
+
+Test flow:
+1. Create test company via API → Verify with GET
+2. Create person linked to company → Verify relationship
+3. Create deal for company → Verify values
+4. Create task → Verify deadline and assignee
+5. Add note to record → Verify content
+6. Cleanup: Delete test records
+
+**Current test files:**
+- `tests/attio-actions/deadline.test.ts` - Deadline parsing, company input parsing
+- `tests/ai/intent.test.ts` - AI intent classification (12+ scenarios)
+- `tests/ai/fixtures/` - Mock schema and test cases
+
 ## Features
 
 ### Current
+- ✅ AI-powered intent classification
+- ✅ Natural language instructions
+- ✅ Multi-entity extraction from conversations
+- ✅ Interactive clarification handling
+- ✅ Prerequisite action chaining
+- ✅ Durable workflows (Vercel Workflows)
+- ✅ Unit tests for core functions (no Telegram needed)
+- ✅ AI intent tests (no Telegram needed)
 - ✅ Forward single or multiple text messages
 - ✅ Queue-based batch processing with `/done` command
 - ✅ Interactive company search with fuzzy matching
 - ✅ Recent company suggestions
 - ✅ Automatic metadata capture (sender, time, chat)
 - ✅ Direct links to Attio records
-- ✅ All messages combined into a single, conversation-style note
-- ✅ Clean, readable note formatting
 - ✅ Webhook-based architecture (serverless-ready)
 
 ### Future Enhancements
+- [ ] E2E Attio API tests (create → verify → cleanup)
+- [ ] Webhook simulation tests
 - [ ] Support forwarded media (images, files, videos)
 - [ ] Auto-suggest companies based on chat name
 - [ ] Add custom tags to notes
-- [ ] Support people records (not just companies)
-- [ ] Edit note content before saving
 - [ ] Multi-language support
 
 ## Contributing

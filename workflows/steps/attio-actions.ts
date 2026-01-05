@@ -792,15 +792,16 @@ export async function executeActionWithNote(
         }
       }
 
-      // Owner defaults to caller (the Telegram user creating the deal)
-      // Stage is validated and defaulted in createDeal - don't pass AI's guess
+      // Owner: use AI-extracted owner if specified, otherwise default to caller
+      // Stage: always uses workspace default (set in createDeal)
+      const extractedOwner = String(data.owner || data.ownerEmail || data.owner_email || "");
       result = await createDeal({
         name: String(data.name || ""),
         value: value as number | undefined,
         currency: String(currency || "USD"),
         companyName,
         companyId,
-        ownerEmail: action.callerEmail || "",
+        ownerEmail: extractedOwner || action.callerEmail || "",
       });
       parentObject = "deals";
       parentRecordId = result.recordId;

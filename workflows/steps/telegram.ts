@@ -399,13 +399,19 @@ export function formatSuggestedAction(action: {
     job_title: { label: "Title", priority: 5 },
   };
 
-  // Skip these internal fields
+  // Skip these internal/system fields
   const skipFields = new Set([
     "noteTitle",
     "linked_record_id",
     "linked_record_object",
     "assignee_email",
     "assignee_id",
+    "stage", // Stage uses workspace default, don't show AI's guess
+    "owner", // Owner is resolved from name, don't show raw
+    "ownerEmail",
+    "owner_email",
+    "product", // Custom fields that aren't standard
+    "context", // Context goes into the note, not shown in preview
   ]);
 
   let text = `${intentLabels[action.intent] || action.intent}\n\n`;

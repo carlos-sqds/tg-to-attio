@@ -20,12 +20,24 @@ export interface TelegramMessageEvent {
   callerInfo?: CallerInfo;
 }
 
+export interface TelegramForwardWithInstructionEvent {
+  type: "forward_with_instruction";
+  forwardedMessage: ForwardedMessageData;
+  instruction: string;
+  messageId?: number;
+  callerInfo?: CallerInfo;
+}
+
 export interface TelegramCallbackEvent {
   type: "callback_query";
   callbackData: string;
   callbackQueryId: string;
 }
 
-export type TelegramEvent = TelegramTerminateEvent | TelegramMessageEvent | TelegramCallbackEvent;
+export type TelegramEvent =
+  | TelegramTerminateEvent
+  | TelegramMessageEvent
+  | TelegramForwardWithInstructionEvent
+  | TelegramCallbackEvent;
 
 export const telegramHook = defineHook<TelegramEvent>();

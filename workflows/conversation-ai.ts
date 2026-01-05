@@ -537,6 +537,103 @@ Send /start to create a fresh session.`,
         continue;
       }
 
+      // Handle forward with instruction - single-message quick flow
+      if (event.type === "forward_with_instruction") {
+        messageQueue.push(event.forwardedMessage);
+        currentInstruction = event.instruction;
+
+        if (event.callerInfo) {
+          callerInfo = event.callerInfo;
+        }
+
+        state = "processing_ai";
+        console.log("[WORKFLOW] Forward with instruction", {
+          instruction: event.instruction.substring(0, 50),
+          messageId: event.messageId,
+        });
+
+        try {
+          if (event.messageId) {
+            await setMessageReaction(chatId, event.messageId, "🤔");
+          }
+
+          if (!schema) {
+            schema = await fetchFullSchemaCached();
+          }
+
+          const messagesForAI = messageQueue.map((m) => ({
+            text: m.text,
+            chatName: m.chatName,
+            date: m.date,
+            senderUsername: m.senderUsername,
+            senderFirstName: m.senderFirstName,
+            senderLastName: m.senderLastName,
+          }));
+
+          currentAction = await analyzeIntent({
+            messages: messagesForAI,
+            instruction: event.instruction,
+            schema: schema!,
+          });
+
+          if (event.messageId) {
+            await setMessageReaction(chatId, event.messageId, null);
+          }
+
+          // Auto-resolve assignee for tasks
+          if (currentAction.intent === "create_task" && schema) {
+            const currentSchema = schema as AttioSchema;
+            const assigneeName = String(
+              currentAction.extractedData.assignee ||
+                currentAction.extractedData.assignee_email ||
+                ""
+            );
+            const resolved = await resolveAssignee(
+              assigneeName,
+              callerInfo,
+              currentSchema.workspaceMembers,
+              true
+            );
+            if (resolved) {
+              currentAction.extractedData.assignee_id = resolved.memberId;
+              currentAction.extractedData.assignee = resolved.memberName;
+              currentAction.extractedData.assignee_email = resolved.email;
+            }
+          }
+
+          state = "awaiting_confirmation";
+          const suggestionText = formatSuggestedAction(currentAction);
+          const hasClarifications = currentAction.clarificationsNeeded.length > 0;
+
+          lastBotMessageId = await sendMessage({
+            chatId,
+            text: suggestionText,
+            replyMarkup: {
+              inline_keyboard: buildAISuggestionKeyboard(hasClarifications, currentAction.intent),
+            },
+          });
+
+          logger.info("AI suggestion generated (forward+instruction)", {
+            userId,
+            intent: currentAction.intent,
+            confidence: currentAction.confidence,
+          });
+        } catch (error) {
+          if (event.messageId) {
+            await setMessageReaction(chatId, event.messageId, null);
+          }
+          const errorMsg = error instanceof Error ? error.message : String(error);
+          logger.error("AI analysis failed", { userId, error: errorMsg });
+
+          await sendMessage({
+            chatId,
+            text: `❌ AI analysis failed: ${errorMsg.substring(0, 200)}`,
+          });
+          state = "idle";
+        }
+        continue;
+      }
+
       // Handle text messages
       if (event.type === "text_message" && event.text) {
         const text = event.text;

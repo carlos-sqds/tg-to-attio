@@ -8,6 +8,17 @@ import type { ForwardedMessageData } from "@/src/types";
 const BOT_TOKEN = process.env.BOT_TOKEN!;
 const TELEGRAM_API = `https://api.telegram.org/bot${BOT_TOKEN}`;
 
+// Track pending instructions for forward correlation
+// Key: chatId, Value: { text, timestamp, messageId, callerInfo }
+interface PendingInstruction {
+  text: string;
+  timestamp: number;
+  messageId: number;
+  callerInfo?: { firstName?: string; lastName?: string; username?: string };
+}
+const pendingInstructions = new Map<number, PendingInstruction>();
+const INSTRUCTION_TIMEOUT_MS = 2000; // 2 seconds window
+
 interface TelegramUpdate {
   update_id: number;
   message?: TelegramMessage;
@@ -270,22 +281,57 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ ok: true });
       }
 
-      // Forwarded messages - try to resume workflow
+      // Forwarded messages - check for pending instruction first
       if (msg.forward_origin) {
         const forwardedMessage = extractForwardedMessage(msg);
         if (forwardedMessage) {
-          const event: TelegramEvent = { type: "forwarded_message", forwardedMessage };
+          // Check for pending instruction from this chat
+          const pending = pendingInstructions.get(chatId);
+          const now = Date.now();
 
-          const success = await tryResumeWorkflow(userId, event);
-          if (!success) {
-            await sendTelegramMessage(chatId, "Please send /start first to begin.");
+          if (pending && now - pending.timestamp < INSTRUCTION_TIMEOUT_MS) {
+            // Found a recent instruction - combine with forward
+            pendingInstructions.delete(chatId);
+            const event: TelegramEvent = {
+              type: "forward_with_instruction",
+              forwardedMessage,
+              instruction: pending.text,
+              messageId: pending.messageId,
+              callerInfo: pending.callerInfo,
+            };
+
+            const success = await tryResumeWorkflow(userId, event);
+            if (!success) {
+              await sendTelegramMessage(chatId, "Please send /start first to begin.");
+            }
+          } else {
+            // No pending instruction - regular forward
+            const event: TelegramEvent = { type: "forwarded_message", forwardedMessage };
+
+            const success = await tryResumeWorkflow(userId, event);
+            if (!success) {
+              await sendTelegramMessage(chatId, "Please send /start first to begin.");
+            }
           }
         }
         return NextResponse.json({ ok: true });
       }
 
-      // Regular text messages (for company search) - try to resume workflow
+      // Regular text messages - store as potential instruction for forward correlation
       if (text && !text.startsWith("/")) {
+        // Store as pending instruction (might be followed by a forward)
+        pendingInstructions.set(chatId, {
+          text,
+          timestamp: Date.now(),
+          messageId: msg.message_id,
+          callerInfo: {
+            firstName: msg.from?.first_name,
+            lastName: msg.from?.last_name,
+            username: msg.from?.username,
+          },
+        });
+
+        // Also try to resume workflow (for company search, clarifications, etc.)
         const event: TelegramEvent = { type: "text_message", text };
         const success = await tryResumeWorkflow(userId, event);
         if (!success) {

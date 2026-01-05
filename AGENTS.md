@@ -13,6 +13,11 @@ This is the foundational design principle. Before writing any code, consider: ca
 ## Quick Reference
 @.shared/context.md
 
+## Deployment
+- **Vercel Dashboard**: https://vercel.com/squadsv0/tg-to-attio
+- **Vercel Scope**: `squadsv0`
+- See `vercel` skill for CLI commands
+
 ## Language Patterns
 - TypeScript/NextJS: @.shared/typescript-patterns.md
 - Linear workflow: @.shared/linear-workflow.md
@@ -87,6 +92,9 @@ If your PR includes changes to `.factory/` or `.claude/` files, run the `sync-do
 
 ## Verification
 Before completing any task:
-1. Run relevant lint command
-2. Run relevant test command
-3. Ensure no type errors
+1. Run `npm run lint` - fix any errors
+2. Run `npm run type-check` - fix any type errors
+3. Run `npm run test:run` - fix any failing tests
+4. **Do not return to the user until all checks pass**
+
+If tests fail due to your changes, debug and fix them before reporting completion. The user should never see failing tests from completed work.

@@ -121,14 +121,10 @@ export async function createPerson(input: CreatePersonInput): Promise<ActionResu
   }
 
   try {
-    const response = await attioRequest<AttioRecordResponse>(
-      "/objects/people/records",
-      apiKey,
-      {
-        method: "POST",
-        body: JSON.stringify({ data: { values } }),
-      }
-    );
+    const response = await attioRequest<AttioRecordResponse>("/objects/people/records", apiKey, {
+      method: "POST",
+      body: JSON.stringify({ data: { values } }),
+    });
 
     return {
       success: true,
@@ -175,14 +171,10 @@ export async function createCompany(input: CreateCompanyInput): Promise<ActionRe
   }
 
   try {
-    const response = await attioRequest<AttioRecordResponse>(
-      "/objects/companies/records",
-      apiKey,
-      {
-        method: "POST",
-        body: JSON.stringify({ data: { values } }),
-      }
-    );
+    const response = await attioRequest<AttioRecordResponse>("/objects/companies/records", apiKey, {
+      method: "POST",
+      body: JSON.stringify({ data: { values } }),
+    });
 
     return {
       success: true,
@@ -220,10 +212,9 @@ export async function createDeal(input: CreateDealInput): Promise<ActionResult> 
   };
 
   if (input.value !== undefined) {
-    values.value = {
-      value: input.value,
-      currency: input.currency || "USD",
-    };
+    // Currency values are written as plain numbers (Attio ignores currency on write)
+    // The currency_code is configured at the attribute level, not per-record
+    values.value = input.value;
   }
 
   if (input.stage) {
@@ -262,14 +253,10 @@ export async function createDeal(input: CreateDealInput): Promise<ActionResult> 
   }
 
   try {
-    const response = await attioRequest<AttioRecordResponse>(
-      "/objects/deals/records",
-      apiKey,
-      {
-        method: "POST",
-        body: JSON.stringify({ data: { values } }),
-      }
-    );
+    const response = await attioRequest<AttioRecordResponse>("/objects/deals/records", apiKey, {
+      method: "POST",
+      body: JSON.stringify({ data: { values } }),
+    });
 
     return {
       success: true,
@@ -298,28 +285,28 @@ export interface CreateTaskInput {
 // Parse company input like "Noah from Noah.com" into name and domain
 export function parseCompanyInput(input: string): { name: string; domain?: string } {
   const trimmed = input.trim();
-  
+
   // Pattern: "CompanyName from domain.com"
   const fromPattern = trimmed.match(/^(.+?)\s+from\s+(\S+\.\S+)$/i);
   if (fromPattern) {
     return { name: fromPattern[1].trim(), domain: fromPattern[2].toLowerCase() };
   }
-  
+
   // Pattern: "CompanyName (domain.com)"
   const parenPattern = trimmed.match(/^(.+?)\s*\((\S+\.\S+)\)$/);
   if (parenPattern) {
     return { name: parenPattern[1].trim(), domain: parenPattern[2].toLowerCase() };
   }
-  
+
   // Check if input looks like just a URL/domain
   const domainOnly = trimmed.match(/^(?:https?:\/\/)?(?:www\.)?([a-z0-9-]+\.[a-z.]+)$/i);
   if (domainOnly) {
     const domain = domainOnly[1].toLowerCase();
-    const namePart = domain.split('.')[0];
+    const namePart = domain.split(".")[0];
     const name = namePart.charAt(0).toUpperCase() + namePart.slice(1);
     return { name, domain };
   }
-  
+
   return { name: trimmed };
 }
 
@@ -333,29 +320,35 @@ export function toAttioDateFormat(date: Date): string {
 
 export function parseDeadline(deadline: unknown): string | null {
   if (!deadline) return null;
-  
+
   // Convert to string if needed
   const deadlineStr = typeof deadline === "string" ? deadline : String(deadline);
   if (!deadlineStr || deadlineStr === "undefined" || deadlineStr === "null") return null;
-  
+
   const now = new Date();
   const lowerDeadline = deadlineStr.toLowerCase().trim();
-  
+
   // Handle relative dates first (before trying Date parsing)
   if (lowerDeadline.includes("tomorrow")) {
     now.setDate(now.getDate() + 1);
     now.setHours(9, 0, 0, 0);
     return toAttioDateFormat(now);
   }
-  
-  if (lowerDeadline.includes("next week") || lowerDeadline === "1 week" || lowerDeadline === "a week") {
+
+  if (
+    lowerDeadline.includes("next week") ||
+    lowerDeadline === "1 week" ||
+    lowerDeadline === "a week"
+  ) {
     now.setDate(now.getDate() + 7);
     now.setHours(9, 0, 0, 0);
     return toAttioDateFormat(now);
   }
-  
+
   // Handle "next wednesday", "next monday", etc.
-  const dayMatch = lowerDeadline.match(/(?:next\s+)?(monday|tuesday|wednesday|thursday|friday|saturday|sunday)/i);
+  const dayMatch = lowerDeadline.match(
+    /(?:next\s+)?(monday|tuesday|wednesday|thursday|friday|saturday|sunday)/i
+  );
   if (dayMatch) {
     const days = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
     const targetDay = days.indexOf(dayMatch[1].toLowerCase());
@@ -366,7 +359,7 @@ export function parseDeadline(deadline: unknown): string | null {
     now.setHours(9, 0, 0, 0);
     return toAttioDateFormat(now);
   }
-  
+
   // Handle "in X days" or "X days"
   const daysMatch = lowerDeadline.match(/(?:in\s+)?(\d+)\s*days?/i);
   if (daysMatch) {
@@ -374,7 +367,7 @@ export function parseDeadline(deadline: unknown): string | null {
     now.setHours(9, 0, 0, 0);
     return toAttioDateFormat(now);
   }
-  
+
   // Handle "in X weeks" or "X weeks" (including word numbers like "two weeks")
   const wordToNum: Record<string, number> = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6 };
   const weeksMatch = lowerDeadline.match(/(?:in\s+)?(\d+|one|two|three|four|five|six)\s*weeks?/i);
@@ -382,12 +375,12 @@ export function parseDeadline(deadline: unknown): string | null {
     const weekValue = weeksMatch[1].toLowerCase();
     const weeks = wordToNum[weekValue] || parseInt(weekValue, 10);
     if (!isNaN(weeks)) {
-      now.setDate(now.getDate() + (weeks * 7));
+      now.setDate(now.getDate() + weeks * 7);
       now.setHours(9, 0, 0, 0);
       return toAttioDateFormat(now);
     }
   }
-  
+
   // Handle "end of week", "eow"
   if (lowerDeadline.includes("end of week") || lowerDeadline === "eow") {
     const daysUntilFriday = (5 - now.getDay() + 7) % 7 || 7;
@@ -395,7 +388,7 @@ export function parseDeadline(deadline: unknown): string | null {
     now.setHours(17, 0, 0, 0);
     return toAttioDateFormat(now);
   }
-  
+
   // Only try ISO date parsing for strings that look like dates (YYYY-MM-DD format)
   const isoMatch = deadlineStr.match(/^\d{4}-\d{2}-\d{2}/);
   if (isoMatch) {
@@ -404,7 +397,7 @@ export function parseDeadline(deadline: unknown): string | null {
       return toAttioDateFormat(isoDate);
     }
   }
-  
+
   // Don't try to parse arbitrary strings - return null for unrecognized formats
   return null;
 }
@@ -435,10 +428,10 @@ export async function createTask(input: CreateTaskInput): Promise<ActionResult> 
 
   // Parse deadline - Attio requires deadline_at field (can be null)
   const parsedDeadline = parseDeadline(input.deadline);
-  console.log("[TASK] Deadline parsing:", { 
-    input: input.deadline, 
+  console.log("[TASK] Deadline parsing:", {
+    input: input.deadline,
     inputType: typeof input.deadline,
-    parsed: parsedDeadline 
+    parsed: parsedDeadline,
   });
 
   const data: Record<string, unknown> = {
@@ -453,14 +446,10 @@ export async function createTask(input: CreateTaskInput): Promise<ActionResult> 
   console.log("[TASK] Sending to Attio:", JSON.stringify(data, null, 2));
 
   try {
-    const response = await attioRequest<AttioTaskResponse>(
-      "/tasks",
-      apiKey,
-      {
-        method: "POST",
-        body: JSON.stringify({ data }),
-      }
-    );
+    const response = await attioRequest<AttioTaskResponse>("/tasks", apiKey, {
+      method: "POST",
+      body: JSON.stringify({ data }),
+    });
 
     return {
       success: true,
@@ -491,22 +480,18 @@ export async function createNote(input: CreateNoteInput): Promise<ActionResult> 
   if (!apiKey) throw new Error("ATTIO_API_KEY not configured");
 
   try {
-    const response = await attioRequest<AttioNoteResponse>(
-      "/notes",
-      apiKey,
-      {
-        method: "POST",
-        body: JSON.stringify({
-          data: {
-            parent_object: input.parentObject,
-            parent_record_id: input.parentRecordId,
-            title: input.title,
-            format: "markdown",
-            content: input.content,
-          },
-        }),
-      }
-    );
+    const response = await attioRequest<AttioNoteResponse>("/notes", apiKey, {
+      method: "POST",
+      body: JSON.stringify({
+        data: {
+          parent_object: input.parentObject,
+          parent_record_id: input.parentRecordId,
+          title: input.title,
+          format: "markdown",
+          content: input.content,
+        },
+      }),
+    });
 
     return {
       success: true,
@@ -567,10 +552,7 @@ export interface SearchResult {
   extra?: string;
 }
 
-export async function searchRecords(
-  objectSlug: string,
-  query: string
-): Promise<SearchResult[]> {
+export async function searchRecords(objectSlug: string, query: string): Promise<SearchResult[]> {
   "use step";
 
   const apiKey = process.env.ATTIO_API_KEY;
@@ -584,19 +566,15 @@ export async function searchRecords(
         domains?: Array<{ domain: string }>;
       };
     }>;
-  }>(
-    `/objects/${objectSlug}/records/query`,
-    apiKey,
-    {
-      method: "POST",
-      body: JSON.stringify({
-        filter: {
-          name: { value: { $contains: query } },
-        },
-        limit: 10,
-      }),
-    }
-  );
+  }>(`/objects/${objectSlug}/records/query`, apiKey, {
+    method: "POST",
+    body: JSON.stringify({
+      filter: {
+        name: { value: { $contains: query } },
+      },
+      limit: 10,
+    }),
+  });
 
   return response.data.map((record) => {
     const nameValue = record.values.name?.[0];
@@ -636,7 +614,7 @@ export async function executeActionWithNote(
   let result: ActionResult;
   let parentObject: "companies" | "people" | "deals" = "companies";
   let parentRecordId: string | undefined;
-  
+
   // Track created prerequisite records for linking
   const createdRecords: Record<string, string> = {}; // intent -> recordId
   const createdPrerequisites: Array<{ name: string; url?: string }> = [];
@@ -647,14 +625,14 @@ export async function executeActionWithNote(
   console.log("[ACTION] Checking prerequisiteActions:", {
     hasPrereqs: !!action.prerequisiteActions,
     count: action.prerequisiteActions?.length || 0,
-    prereqs: action.prerequisiteActions
+    prereqs: action.prerequisiteActions,
   });
-  
+
   if (action.prerequisiteActions && action.prerequisiteActions.length > 0) {
     console.log("[ACTION] Executing prerequisite actions...");
     for (const prereq of action.prerequisiteActions) {
       let prereqResult: ActionResult | null = null;
-      
+
       switch (prereq.intent) {
         case "create_company": {
           const companyName = String(prereq.extractedData.name || "");
@@ -676,7 +654,9 @@ export async function executeActionWithNote(
           prereqResult = await createPerson({
             name: personName,
             email: String(prereq.extractedData.email || ""),
-            company: createdRecords["company"] ? undefined : String(prereq.extractedData.company || ""),
+            company: createdRecords["company"]
+              ? undefined
+              : String(prereq.extractedData.company || ""),
           });
           if (prereqResult.success && prereqResult.recordId) {
             createdRecords["person"] = prereqResult.recordId;
@@ -698,8 +678,10 @@ export async function executeActionWithNote(
   switch (action.intent) {
     case "create_person": {
       // Use prerequisite company if created, otherwise check associated_company
-      let companyForPerson = createdRecords["company"] ? undefined : String(data.company || data.associated_company || "");
-      
+      let companyForPerson = createdRecords["company"]
+        ? undefined
+        : String(data.company || data.associated_company || "");
+
       // If we have a company name but no prerequisite was created, search or create it
       if (companyForPerson && !createdRecords["company"]) {
         const companies = await searchRecords("companies", companyForPerson);
@@ -717,7 +699,7 @@ export async function executeActionWithNote(
           }
         }
       }
-      
+
       result = await createPerson({
         name: String(data.name || data.full_name || ""),
         email: String(data.email_addresses || data.email || ""),
@@ -750,7 +732,9 @@ export async function executeActionWithNote(
 
       // Use prerequisite company if created
       let companyId = createdRecords["company"];
-      let companyName = companyId ? undefined : String(data.associated_company || data.company || "");
+      let companyName = companyId
+        ? undefined
+        : String(data.associated_company || data.company || "");
 
       // If we have a company name but no prerequisite was created, search or create it
       if (companyName && !companyId) {
@@ -790,12 +774,12 @@ export async function executeActionWithNote(
       let linkedRecordId = String(data.linked_record_id || "");
       let linkedRecordObject = String(data.linked_record_object || "");
       let linkedCompanyUrl: string | undefined;
-      
+
       if (!linkedRecordId && createdRecords["company"]) {
         linkedRecordId = createdRecords["company"];
         linkedRecordObject = "companies";
         // Get URL from prerequisite if available
-        const prereqCompany = createdPrerequisites.find(p => p.name.startsWith("🏢"));
+        const prereqCompany = createdPrerequisites.find((p) => p.name.startsWith("🏢"));
         if (prereqCompany?.url) {
           linkedCompanyUrl = prereqCompany.url;
         }
@@ -810,7 +794,7 @@ export async function executeActionWithNote(
         if (associatedCompany) {
           // Parse company input to extract name and domain (e.g., "Noah from Noah.com")
           const parsed = parseCompanyInput(associatedCompany);
-          
+
           // Search for the company by name
           const companies = await searchRecords("companies", parsed.name);
           if (companies.length > 0) {
@@ -819,9 +803,9 @@ export async function executeActionWithNote(
             linkedCompanyUrl = await getRecordUrl("companies", companies[0].id);
           } else {
             // Create the company with parsed name and domain
-            const createResult = await createCompany({ 
-              name: parsed.name, 
-              domain: parsed.domain 
+            const createResult = await createCompany({
+              name: parsed.name,
+              domain: parsed.domain,
             });
             if (createResult.success && createResult.recordId) {
               linkedRecordId = createResult.recordId;
@@ -846,12 +830,12 @@ export async function executeActionWithNote(
           deadlineValue = action.originalInstruction; // Pass raw instruction, parseDeadline will handle it in createTask
         }
       }
-      
+
       // Fall back to AI's extracted deadline if we couldn't extract from instruction
       if (!deadlineValue) {
-        deadlineValue = 
-          data.deadline_at || 
-          data.due_date || 
+        deadlineValue =
+          data.deadline_at ||
+          data.due_date ||
           data.deadline ||
           (data as Record<string, unknown>)["due date"] ||
           data.due ||
@@ -866,12 +850,12 @@ export async function executeActionWithNote(
         linkedRecordId,
         linkedRecordObject,
       });
-      
+
       // Link to company's tasks tab since Attio doesn't provide direct task URLs
       if (linkedCompanyUrl) {
         result.recordUrl = `${linkedCompanyUrl}/tasks`;
       }
-      
+
       // Include created prerequisites in task result
       if (createdPrerequisites.length > 0) {
         result.createdPrerequisites = createdPrerequisites;

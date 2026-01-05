@@ -17,7 +17,8 @@
     "test:coverage": "vitest run --coverage",
     "test:ai": "vitest run tests/ai",
     "test:ai:smoke": "vitest run tests/ai/intent.test.ts -t 'Smoke'",
-    "test:attio": "vitest run tests/attio",
+    "test:attio": "vitest run tests/attio-actions",
+    "test:e2e": "vitest run tests/e2e",
     "test:schema": "tsx scripts/test-schema.ts",
     "prepare": "husky"
   },

@@ -54,6 +54,31 @@ interface AttioNoteResponse {
   };
 }
 
+// Cache for valid deal stages
+let dealStagesCache: string[] | null = null;
+
+// Export for testing - clears the deal stages cache
+export function clearDealStagesCache() {
+  dealStagesCache = null;
+}
+
+async function getValidDealStages(apiKey: string): Promise<string[]> {
+  if (dealStagesCache) return dealStagesCache;
+
+  try {
+    const response = await attioRequest<{
+      data: Array<{ title: string; is_archived: boolean }>;
+    }>("/objects/deals/attributes/stage/statuses", apiKey);
+
+    dealStagesCache = response.data.filter((s) => !s.is_archived).map((s) => s.title);
+
+    return dealStagesCache;
+  } catch (error) {
+    console.error("[DEAL] Failed to fetch deal stages:", error);
+    return [];
+  }
+}
+
 interface AttioTaskResponse {
   data: {
     id: { task_id: string };
@@ -217,8 +242,15 @@ export async function createDeal(input: CreateDealInput): Promise<ActionResult> 
     values.value = input.value;
   }
 
-  if (input.stage) {
+  // Validate stage against available options, fallback to first valid stage
+  const validStages = await getValidDealStages(apiKey);
+  if (input.stage && validStages.includes(input.stage)) {
     values.stage = input.stage;
+  } else if (validStages.length > 0) {
+    values.stage = validStages[0];
+    if (input.stage) {
+      console.log(`[DEAL] Stage "${input.stage}" invalid, using: ${validStages[0]}`);
+    }
   }
 
   if (input.companyId) {

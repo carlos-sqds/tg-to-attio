@@ -8,6 +8,7 @@ import {
   addToList,
   searchRecords,
   executeActionWithNote,
+  clearDealStagesCache,
   type CreatePersonInput,
   type CreateCompanyInput,
   type CreateDealInput,
@@ -23,6 +24,7 @@ describe("Attio Actions", () => {
   beforeEach(() => {
     vi.stubEnv("ATTIO_API_KEY", "test-api-key");
     mockFetch.mockReset();
+    clearDealStagesCache();
   });
 
   afterEach(() => {
@@ -33,6 +35,20 @@ describe("Attio Actions", () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
       json: () => Promise.resolve({ data }),
+    });
+  };
+
+  const mockDealStagesResponse = () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () =>
+        Promise.resolve({
+          data: [
+            { title: "Lead", is_archived: false },
+            { title: "Qualified", is_archived: false },
+            { title: "Proposal", is_archived: false },
+          ],
+        }),
     });
   };
 
@@ -144,6 +160,9 @@ describe("Attio Actions", () => {
 
   describe("createDeal", () => {
     it("creates a deal with value as plain number", async () => {
+      // First call: fetch deal stages
+      mockDealStagesResponse();
+      // Second call: create deal
       mockSuccessResponse({
         id: { record_id: "deal-123" },
         web_url: "https://app.attio.com/deals/deal-123",
@@ -158,12 +177,16 @@ describe("Attio Actions", () => {
 
       expect(result.success).toBe(true);
 
-      const callBody = JSON.parse(mockFetch.mock.calls[0][1].body);
+      // Second call is the create deal call
+      const callBody = JSON.parse(mockFetch.mock.calls[1][1].body);
       // Currency values are written as plain numbers per Attio API docs
       expect(callBody.data.values.value).toBe(50000);
     });
 
     it("omits value when not provided", async () => {
+      // First call: fetch deal stages
+      mockDealStagesResponse();
+      // Second call: create deal
       mockSuccessResponse({
         id: { record_id: "deal-123" },
         web_url: "https://app.attio.com/deals/deal-123",
@@ -171,12 +194,15 @@ describe("Attio Actions", () => {
 
       await createDeal({ name: "Deal" });
 
-      const callBody = JSON.parse(mockFetch.mock.calls[0][1].body);
+      // Second call is the create deal call
+      const callBody = JSON.parse(mockFetch.mock.calls[1][1].body);
       expect(callBody.data.values.value).toBeUndefined();
     });
 
     it("searches for company when companyName provided", async () => {
-      // First call: company search
+      // First call: fetch deal stages
+      mockDealStagesResponse();
+      // Second call: company search
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: () =>
@@ -184,7 +210,7 @@ describe("Attio Actions", () => {
             data: [{ id: { record_id: "found-company" } }],
           }),
       });
-      // Second call: create deal
+      // Third call: create deal
       mockSuccessResponse({
         id: { record_id: "deal-123" },
         web_url: "https://app.attio.com/deals/deal-123",
@@ -192,18 +218,20 @@ describe("Attio Actions", () => {
 
       await createDeal({ name: "Deal", companyName: "Acme" });
 
-      expect(mockFetch).toHaveBeenCalledTimes(2);
-      const dealBody = JSON.parse(mockFetch.mock.calls[1][1].body);
+      expect(mockFetch).toHaveBeenCalledTimes(3);
+      const dealBody = JSON.parse(mockFetch.mock.calls[2][1].body);
       expect(dealBody.data.values.associated_company.target_record_id).toBe("found-company");
     });
 
     it("uses correct filter structure when searching for company (no value wrapper)", async () => {
-      // First call: company search
+      // First call: fetch deal stages
+      mockDealStagesResponse();
+      // Second call: company search
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: () => Promise.resolve({ data: [] }),
       });
-      // Second call: create deal
+      // Third call: create deal
       mockSuccessResponse({
         id: { record_id: "deal-123" },
         web_url: "https://app.attio.com/deals/deal-123",
@@ -211,8 +239,8 @@ describe("Attio Actions", () => {
 
       await createDeal({ name: "Deal", companyName: "TechCorp" });
 
-      // Verify the company search filter structure
-      const searchBody = JSON.parse(mockFetch.mock.calls[0][1].body);
+      // Second call (index 1) is the company search
+      const searchBody = JSON.parse(mockFetch.mock.calls[1][1].body);
       expect(searchBody.filter).toEqual({
         name: { $contains: "TechCorp" },
       });

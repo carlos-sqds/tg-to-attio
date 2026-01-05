@@ -16,7 +16,7 @@ interface TelegramUpdate {
 
 interface TelegramMessage {
   message_id: number;
-  from?: { 
+  from?: {
     id: number;
     first_name?: string;
     last_name?: string;
@@ -104,21 +104,26 @@ function extractForwardedMessage(message: TelegramMessage): ForwardedMessageData
 }
 
 async function tryResumeWorkflow(userId: number, event: TelegramEvent): Promise<boolean> {
-  const token = `ai6-${userId}`;
-  
+  const token = `ai7-${userId}`;
+
   // Retry logic to handle race condition where workflow hasn't created hook yet
   const maxRetries = 3;
   const retryDelay = 300; // ms
-  
+
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       await telegramHook.resume(token, event);
       logger.info("Resumed workflow", { userId, eventType: event.type, attempt });
       return true;
     } catch (error) {
-      logger.info("Failed to resume workflow", { userId, error: String(error), attempt, maxRetries });
+      logger.info("Failed to resume workflow", {
+        userId,
+        error: String(error),
+        attempt,
+        maxRetries,
+      });
       if (attempt < maxRetries) {
-        await new Promise(resolve => setTimeout(resolve, retryDelay));
+        await new Promise((resolve) => setTimeout(resolve, retryDelay));
       }
     }
   }
@@ -127,7 +132,7 @@ async function tryResumeWorkflow(userId: number, event: TelegramEvent): Promise<
 
 export async function POST(request: NextRequest) {
   try {
-    const update = await request.json() as TelegramUpdate;
+    const update = (await request.json()) as TelegramUpdate;
 
     // Handle callback queries
     if (update.callback_query) {
@@ -167,28 +172,37 @@ export async function POST(request: NextRequest) {
       if (text === "/start") {
         console.log("[WEBHOOK] /start received", { userId, chatId });
         try {
-          const hookToken = `ai6-${userId}`;
+          const hookToken = `ai7-${userId}`;
           console.log("[WEBHOOK] Attempting to terminate existing workflow", { hookToken });
-          
+
           // Try graceful terminate first (works for new workflows with terminate handler)
           try {
             await telegramHook.resume(hookToken, { type: "terminate" });
             console.log("[WEBHOOK] Terminate sent successfully");
             logger.info("Sent terminate to existing workflow", { userId });
-            await new Promise(resolve => setTimeout(resolve, 500));
+            await new Promise((resolve) => setTimeout(resolve, 500));
           } catch (terminateError) {
-            console.log("[WEBHOOK] Graceful terminate failed, trying force cancel", { error: String(terminateError) });
+            console.log("[WEBHOOK] Graceful terminate failed, trying force cancel", {
+              error: String(terminateError),
+            });
             // Fall back to Run.cancel() for old workflows that don't have terminate handler
             try {
               const existingHook = await getHookByToken(hookToken);
               if (existingHook?.runId) {
-                console.log("[WEBHOOK] Found existing hook, canceling run", { runId: existingHook.runId });
+                console.log("[WEBHOOK] Found existing hook, canceling run", {
+                  runId: existingHook.runId,
+                });
                 await new Run(existingHook.runId).cancel();
-                logger.info("Force cancelled existing workflow", { userId, runId: existingHook.runId });
-                await new Promise(resolve => setTimeout(resolve, 500));
+                logger.info("Force cancelled existing workflow", {
+                  userId,
+                  runId: existingHook.runId,
+                });
+                await new Promise((resolve) => setTimeout(resolve, 500));
               }
             } catch (cancelError) {
-              console.log("[WEBHOOK] No existing workflow to cancel", { error: String(cancelError) });
+              console.log("[WEBHOOK] No existing workflow to cancel", {
+                error: String(cancelError),
+              });
             }
           }
 
@@ -206,25 +220,28 @@ export async function POST(request: NextRequest) {
 
       // /help - Send help directly (no workflow needed)
       if (text === "/help") {
-        await sendTelegramMessage(chatId, `Commands:
+        await sendTelegramMessage(
+          chatId,
+          `Commands:
 /start - Start a new session
 /done - Process queued messages
 /clear - Clear message queue
 /cancel - Cancel current operation
-/help - Show this help message`);
+/help - Show this help message`
+        );
         return NextResponse.json({ ok: true });
       }
 
       // All other commands - try to resume workflow
       if (text.startsWith("/")) {
         const command = text.split(" ")[0].toLowerCase();
-        
+
         // For /done, send as text_message to preserve the instruction
         if (command === "/done") {
           console.log("[WEBHOOK] /done command received, text:", text.substring(0, 50));
-          const event: TelegramEvent = { 
-            type: "text_message", 
-            text, 
+          const event: TelegramEvent = {
+            type: "text_message",
+            text,
             messageId: msg.message_id,
             callerInfo: {
               firstName: msg.from?.first_name,
@@ -239,7 +256,7 @@ export async function POST(request: NextRequest) {
           }
           return NextResponse.json({ ok: true });
         }
-        
+
         const event: TelegramEvent = { type: "command", command, messageId: msg.message_id };
         const success = await tryResumeWorkflow(userId, event);
         if (!success) {
@@ -253,7 +270,7 @@ export async function POST(request: NextRequest) {
         const forwardedMessage = extractForwardedMessage(msg);
         if (forwardedMessage) {
           const event: TelegramEvent = { type: "forwarded_message", forwardedMessage };
-          
+
           const success = await tryResumeWorkflow(userId, event);
           if (!success) {
             await sendTelegramMessage(chatId, "Please send /start first to begin.");
@@ -275,7 +292,9 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ ok: true });
   } catch (error) {
-    logger.error("Webhook error", { error: error instanceof Error ? error.message : String(error) });
+    logger.error("Webhook error", {
+      error: error instanceof Error ? error.message : String(error),
+    });
     return NextResponse.json({ ok: true });
   }
 }

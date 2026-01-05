@@ -96,7 +96,7 @@ describe("Webhook Handler", () => {
 
       await POST(request);
 
-      expect(telegramHook.resume).toHaveBeenCalledWith("ai6-12345", { type: "terminate" });
+      expect(telegramHook.resume).toHaveBeenCalledWith("ai7-12345", { type: "terminate" });
     });
 
     it("sends error message when workflow fails to start", async () => {
@@ -170,7 +170,7 @@ describe("Webhook Handler", () => {
       await POST(request);
 
       expect(telegramHook.resume).toHaveBeenCalledWith(
-        "ai6-12345",
+        "ai7-12345",
         expect.objectContaining({
           type: "text_message",
           text: "/done create a contact",
@@ -227,7 +227,7 @@ describe("Webhook Handler", () => {
       await POST(request);
 
       expect(telegramHook.resume).toHaveBeenCalledWith(
-        "ai6-12345",
+        "ai7-12345",
         expect.objectContaining({
           type: "command",
           command: "/clear",
@@ -252,7 +252,7 @@ describe("Webhook Handler", () => {
       await POST(request);
 
       expect(telegramHook.resume).toHaveBeenCalledWith(
-        "ai6-12345",
+        "ai7-12345",
         expect.objectContaining({
           type: "command",
           command: "/cancel",
@@ -287,7 +287,7 @@ describe("Webhook Handler", () => {
       await POST(request);
 
       expect(telegramHook.resume).toHaveBeenCalledWith(
-        "ai6-12345",
+        "ai7-12345",
         expect.objectContaining({
           type: "forwarded_message",
           forwardedMessage: expect.objectContaining({
@@ -322,7 +322,7 @@ describe("Webhook Handler", () => {
       await POST(request);
 
       expect(telegramHook.resume).toHaveBeenCalledWith(
-        "ai6-12345",
+        "ai7-12345",
         expect.objectContaining({
           type: "forwarded_message",
           forwardedMessage: expect.objectContaining({
@@ -353,7 +353,7 @@ describe("Webhook Handler", () => {
       await POST(request);
 
       expect(telegramHook.resume).toHaveBeenCalledWith(
-        "ai6-12345",
+        "ai7-12345",
         expect.objectContaining({
           type: "forwarded_message",
           forwardedMessage: expect.objectContaining({
@@ -384,7 +384,7 @@ describe("Webhook Handler", () => {
       await POST(request);
 
       expect(telegramHook.resume).toHaveBeenCalledWith(
-        "ai6-12345",
+        "ai7-12345",
         expect.objectContaining({
           type: "forwarded_message",
           forwardedMessage: expect.objectContaining({
@@ -416,7 +416,7 @@ describe("Webhook Handler", () => {
       await POST(request);
 
       expect(telegramHook.resume).toHaveBeenCalledWith(
-        "ai6-12345",
+        "ai7-12345",
         expect.objectContaining({
           type: "forwarded_message",
           forwardedMessage: expect.objectContaining({
@@ -447,7 +447,7 @@ describe("Webhook Handler", () => {
       await POST(request);
 
       expect(telegramHook.resume).toHaveBeenCalledWith(
-        "ai6-12345",
+        "ai7-12345",
         expect.objectContaining({
           type: "text_message",
           text: "Some company name",
@@ -473,7 +473,7 @@ describe("Webhook Handler", () => {
       await POST(request);
 
       expect(telegramHook.resume).toHaveBeenCalledWith(
-        "ai6-12345",
+        "ai7-12345",
         expect.objectContaining({
           type: "callback_query",
           callbackData: "ai_confirm",

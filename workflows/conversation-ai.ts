@@ -51,23 +51,25 @@ export async function conversationWorkflowAI(userId: number, chatId: number) {
     chatId,
     text: `🤖 Welcome to the AI-powered Attio Bot!
 
-📋 How it works:
+✨ What I can do:
+• Create contacts, companies, and deals
+• Add records to lists and pipelines
+• Create tasks with assignees and due dates
+• Add notes to any record
+• Search and update existing records
+• Auto-extract names, emails, phones, values
 
-1️⃣ Forward me messages from conversations
-2️⃣ Send /done followed by what you want to do
+📋 How to use:
+1️⃣ Forward messages from any conversation
+2️⃣ Send /done followed by your instruction
    Examples:
    • /done create a contact
-   • /done add this to TechCorp
-   • /done create a deal for $50k
-   • /done remind Sarah to follow up
-3️⃣ Review my suggestion and confirm
+   • /done add to sales pipeline
+   • /done create a $50k deal
+   • /done remind Sarah to follow up Friday
+3️⃣ Review and confirm
 
-Commands:
-/done <instruction> - Process messages with AI
-/clear - Clear message queue
-/cancel - Cancel current operation
-/session - Show version & session info
-/help - Show this message`,
+Commands: /done /clear /cancel /session /help`,
   });
 
   logger.info("AI Workflow started", { userId });
@@ -576,33 +578,42 @@ Send /start to create a fresh session.`,
           });
 
           try {
-            // Lazy load schema first (outside the callback)
-            console.log("[WORKFLOW] Fetching schema...");
-            if (!schema) {
-              schema = await fetchFullSchemaCached();
+            const processWithAI = async () => {
+              // Lazy load schema first
+              console.log("[WORKFLOW] Fetching schema...");
+              if (!schema) {
+                schema = await fetchFullSchemaCached();
+              }
+              console.log("[WORKFLOW] Schema loaded", {
+                objectCount: schema.objects.length,
+                memberCount: schema.workspaceMembers.length,
+              });
+
+              // Prepare messages for AI
+              const messagesForAI = messageQueue.map((m) => ({
+                text: m.text,
+                chatName: m.chatName,
+                date: m.date,
+                senderUsername: m.senderUsername,
+                senderFirstName: m.senderFirstName,
+                senderLastName: m.senderLastName,
+              }));
+
+              console.log("[WORKFLOW] Calling analyzeIntent...");
+              const action = await analyzeIntent({
+                messages: messagesForAI,
+                instruction,
+                schema: schema!,
+              });
+              console.log("[WORKFLOW] analyzeIntent completed", { intent: action.intent });
+              return action;
+            };
+
+            if (event.messageId) {
+              currentAction = await withCyclingReaction(chatId, event.messageId, processWithAI);
+            } else {
+              currentAction = await processWithAI();
             }
-            console.log("[WORKFLOW] Schema loaded", {
-              objectCount: schema.objects.length,
-              memberCount: schema.workspaceMembers.length,
-            });
-
-            // Prepare messages for AI
-            const messagesForAI = messageQueue.map((m) => ({
-              text: m.text,
-              chatName: m.chatName,
-              date: m.date,
-              senderUsername: m.senderUsername,
-              senderFirstName: m.senderFirstName,
-              senderLastName: m.senderLastName,
-            }));
-
-            console.log("[WORKFLOW] Calling analyzeIntent...");
-            currentAction = await analyzeIntent({
-              messages: messagesForAI,
-              instruction,
-              schema,
-            });
-            console.log("[WORKFLOW] analyzeIntent completed", { intent: currentAction.intent });
 
             // Auto-resolve assignee for tasks (handles "me", empty, or name)
             if (currentAction.intent === "create_task" && schema) {

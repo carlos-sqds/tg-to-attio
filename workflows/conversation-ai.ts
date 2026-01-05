@@ -7,7 +7,7 @@ import {
   sendMessage,
   editMessage,
   answerCallbackQuery,
-  withCyclingReaction,
+  setMessageReaction,
   buildAISuggestionKeyboard,
   buildClarificationKeyboard,
   buildEditFieldKeyboard,
@@ -51,23 +51,25 @@ export async function conversationWorkflowAI(userId: number, chatId: number) {
     chatId,
     text: `🤖 Welcome to the AI-powered Attio Bot!
 
-📋 How it works:
+✨ What I can do:
+• Create contacts, companies, and deals
+• Add records to lists and pipelines
+• Create tasks with assignees and due dates
+• Add notes to any record
+• Search and update existing records
+• Auto-extract names, emails, phones, values
 
-1️⃣ Forward me messages from conversations
-2️⃣ Send /done followed by what you want to do
+📋 How to use:
+1️⃣ Forward messages from any conversation
+2️⃣ Send /done followed by your instruction
    Examples:
    • /done create a contact
-   • /done add this to TechCorp
-   • /done create a deal for $50k
-   • /done remind Sarah to follow up
-3️⃣ Review my suggestion and confirm
+   • /done add to sales pipeline
+   • /done create a $50k deal
+   • /done remind Sarah to follow up Friday
+3️⃣ Review and confirm
 
-Commands:
-/done <instruction> - Process messages with AI
-/clear - Clear message queue
-/cancel - Cancel current operation
-/session - Show version & session info
-/help - Show this message`,
+Commands: /done /clear /cancel /session /help`,
   });
 
   logger.info("AI Workflow started", { userId });
@@ -576,7 +578,12 @@ Send /start to create a fresh session.`,
           });
 
           try {
-            // Lazy load schema first (outside the callback)
+            // Set thinking reaction
+            if (event.messageId) {
+              await setMessageReaction(chatId, event.messageId, "🤔");
+            }
+
+            // Lazy load schema first
             console.log("[WORKFLOW] Fetching schema...");
             if (!schema) {
               schema = await fetchFullSchemaCached();
@@ -600,9 +607,14 @@ Send /start to create a fresh session.`,
             currentAction = await analyzeIntent({
               messages: messagesForAI,
               instruction,
-              schema,
+              schema: schema!,
             });
             console.log("[WORKFLOW] analyzeIntent completed", { intent: currentAction.intent });
+
+            // Clear reaction
+            if (event.messageId) {
+              await setMessageReaction(chatId, event.messageId, null);
+            }
 
             // Auto-resolve assignee for tasks (handles "me", empty, or name)
             if (currentAction.intent === "create_task" && schema) {
@@ -646,7 +658,10 @@ Send /start to create a fresh session.`,
               confidence: currentAction.confidence,
             });
           } catch (error) {
-            // Reaction is auto-cleared by withCyclingReaction
+            // Clear reaction on error
+            if (event.messageId) {
+              await setMessageReaction(chatId, event.messageId, null);
+            }
             const errorMsg = error instanceof Error ? error.message : String(error);
             logger.error("AI analysis failed", { userId, error: errorMsg });
 
@@ -664,29 +679,31 @@ Send /start to create a fresh session.`,
           state = "processing_ai";
 
           try {
-            const processWithAI = async () => {
-              if (!schema) {
-                schema = await fetchFullSchemaCached();
-              }
-
-              return await analyzeIntent({
-                messages: messageQueue.map((m) => ({
-                  text: m.text,
-                  chatName: m.chatName,
-                  date: m.date,
-                  senderUsername: m.senderUsername,
-                  senderFirstName: m.senderFirstName,
-                  senderLastName: m.senderLastName,
-                })),
-                instruction: text,
-                schema,
-              });
-            };
-
+            // Set thinking reaction
             if (event.messageId) {
-              currentAction = await withCyclingReaction(chatId, event.messageId, processWithAI);
-            } else {
-              currentAction = await processWithAI();
+              await setMessageReaction(chatId, event.messageId, "🤔");
+            }
+
+            if (!schema) {
+              schema = await fetchFullSchemaCached();
+            }
+
+            currentAction = await analyzeIntent({
+              messages: messageQueue.map((m) => ({
+                text: m.text,
+                chatName: m.chatName,
+                date: m.date,
+                senderUsername: m.senderUsername,
+                senderFirstName: m.senderFirstName,
+                senderLastName: m.senderLastName,
+              })),
+              instruction: text,
+              schema,
+            });
+
+            // Clear reaction
+            if (event.messageId) {
+              await setMessageReaction(chatId, event.messageId, null);
             }
 
             // Auto-resolve assignee for tasks (handles "me", empty, or name)
@@ -737,14 +754,21 @@ Send /start to create a fresh session.`,
           const clarification = currentAction.clarificationsNeeded[currentClarificationIndex];
 
           try {
-            const processWithAI = async () => {
-              return await processClarification(currentAction!, clarification.field, text, schema!);
-            };
-
+            // Set thinking reaction
             if (event.messageId) {
-              currentAction = await withCyclingReaction(chatId, event.messageId, processWithAI);
-            } else {
-              currentAction = await processWithAI();
+              await setMessageReaction(chatId, event.messageId, "🤔");
+            }
+
+            currentAction = await processClarification(
+              currentAction!,
+              clarification.field,
+              text,
+              schema!
+            );
+
+            // Clear reaction
+            if (event.messageId) {
+              await setMessageReaction(chatId, event.messageId, null);
             }
 
             state = "awaiting_confirmation";
@@ -774,14 +798,16 @@ Send /start to create a fresh session.`,
           editingField = null;
 
           try {
-            const processWithAI = async () => {
-              return await processClarification(currentAction!, fieldToEdit, text, schema!);
-            };
-
+            // Set thinking reaction
             if (event.messageId) {
-              currentAction = await withCyclingReaction(chatId, event.messageId, processWithAI);
-            } else {
-              currentAction = await processWithAI();
+              await setMessageReaction(chatId, event.messageId, "🤔");
+            }
+
+            currentAction = await processClarification(currentAction!, fieldToEdit, text, schema!);
+
+            // Clear reaction
+            if (event.messageId) {
+              await setMessageReaction(chatId, event.messageId, null);
             }
 
             state = "awaiting_confirmation";

@@ -211,9 +211,14 @@ export async function POST(request: NextRequest) {
           console.log("[WEBHOOK] Workflow started", { runId: run.runId });
           logger.info("Started new AI workflow", { userId, runId: run.runId });
         } catch (error) {
-          console.log("[WEBHOOK] Failed to start workflow", { error: String(error) });
-          logger.error("Failed to start workflow", { userId, error: String(error) });
-          await sendTelegramMessage(chatId, "Failed to start. Please try again.");
+          const errorMsg = error instanceof Error ? error.message : String(error);
+          const errorStack = error instanceof Error ? error.stack : undefined;
+          console.error("[WEBHOOK] Failed to start workflow", {
+            error: errorMsg,
+            stack: errorStack,
+          });
+          logger.error("Failed to start workflow", { userId, error: errorMsg, stack: errorStack });
+          await sendTelegramMessage(chatId, `Failed to start: ${errorMsg.substring(0, 100)}`);
         }
         return NextResponse.json({ ok: true });
       }

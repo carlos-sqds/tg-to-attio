@@ -418,6 +418,12 @@ export async function createTask(input: CreateTaskInput): Promise<ActionResult> 
   }
 
   // Build assignees array (required by Attio, even if empty)
+  console.log("[TASK] createTask input:", {
+    assigneeId: input.assigneeId,
+    assigneeIdType: typeof input.assigneeId,
+    assigneeIdTruthy: !!input.assigneeId,
+  });
+
   const assignees: Array<{ referenced_actor_type: string; referenced_actor_id: string }> = [];
   if (input.assigneeId) {
     assignees.push({
@@ -841,6 +847,14 @@ export async function executeActionWithNote(
           data.due ||
           data.date;
       }
+
+      console.log("[TASK] Input data for task creation:", {
+        assignee_id: data.assignee_id,
+        assignee_id_type: typeof data.assignee_id,
+        assignee: data.assignee,
+        assignee_email: data.assignee_email,
+        allKeys: Object.keys(data),
+      });
 
       result = await createTask({
         content: String(data.content || data.title || data.task || ""),

@@ -76,9 +76,9 @@ Example: forward + "create contact"
 Commands: /done /clear /cancel /session /help`,
   });
 
-  logger.info("AI Workflow started", { userId });
+  logger.info("AI Workflow started", { userId, chatId });
 
-  const events = telegramHook.create({ token: `ai7-${userId}` });
+  const events = telegramHook.create({ token: `ai7-${userId}-${chatId}` });
 
   for await (const event of events) {
     try {

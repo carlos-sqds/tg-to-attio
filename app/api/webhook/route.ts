@@ -114,8 +114,12 @@ function extractForwardedMessage(message: TelegramMessage): ForwardedMessageData
   };
 }
 
-async function tryResumeWorkflow(userId: number, event: TelegramEvent): Promise<boolean> {
-  const token = `ai7-${userId}`;
+async function tryResumeWorkflow(
+  userId: number,
+  chatId: number,
+  event: TelegramEvent
+): Promise<boolean> {
+  const token = `ai7-${userId}-${chatId}`;
 
   // Retry logic to handle race condition where workflow hasn't created hook yet
   const maxRetries = 3;
@@ -161,7 +165,7 @@ export async function POST(request: NextRequest) {
         callbackQueryId: cq.id,
       };
 
-      const success = await tryResumeWorkflow(userId, event);
+      const success = await tryResumeWorkflow(userId, chatId, event);
       if (!success) {
         await sendTelegramMessage(chatId, "Please send /start first to begin.");
       }
@@ -183,7 +187,7 @@ export async function POST(request: NextRequest) {
       if (text === "/start") {
         console.log("[WEBHOOK] /start received", { userId, chatId });
         try {
-          const hookToken = `ai7-${userId}`;
+          const hookToken = `ai7-${userId}-${chatId}`;
           console.log("[WEBHOOK] Attempting to terminate existing workflow", { hookToken });
 
           // Try graceful terminate first (works for new workflows with terminate handler)
@@ -265,7 +269,7 @@ export async function POST(request: NextRequest) {
               username: msg.from?.username,
             },
           };
-          const success = await tryResumeWorkflow(userId, event);
+          const success = await tryResumeWorkflow(userId, chatId, event);
           console.log("[WEBHOOK] tryResumeWorkflow result:", success);
           if (!success) {
             await sendTelegramMessage(chatId, "Please send /start first to begin.");
@@ -274,7 +278,7 @@ export async function POST(request: NextRequest) {
         }
 
         const event: TelegramEvent = { type: "command", command, messageId: msg.message_id };
-        const success = await tryResumeWorkflow(userId, event);
+        const success = await tryResumeWorkflow(userId, chatId, event);
         if (!success) {
           await sendTelegramMessage(chatId, "Please send /start first to begin.");
         }
@@ -300,7 +304,7 @@ export async function POST(request: NextRequest) {
               callerInfo: pending.callerInfo,
             };
 
-            const success = await tryResumeWorkflow(userId, event);
+            const success = await tryResumeWorkflow(userId, chatId, event);
             if (!success) {
               await sendTelegramMessage(chatId, "Please send /start first to begin.");
             }
@@ -308,7 +312,7 @@ export async function POST(request: NextRequest) {
             // No pending instruction - regular forward
             const event: TelegramEvent = { type: "forwarded_message", forwardedMessage };
 
-            const success = await tryResumeWorkflow(userId, event);
+            const success = await tryResumeWorkflow(userId, chatId, event);
             if (!success) {
               await sendTelegramMessage(chatId, "Please send /start first to begin.");
             }
@@ -333,7 +337,7 @@ export async function POST(request: NextRequest) {
 
         // Also try to resume workflow (for company search, clarifications, etc.)
         const event: TelegramEvent = { type: "text_message", text };
-        const success = await tryResumeWorkflow(userId, event);
+        const success = await tryResumeWorkflow(userId, chatId, event);
         if (!success) {
           await sendTelegramMessage(chatId, "Please send /start first to begin.");
         }

@@ -1,0 +1,26 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "caffeinate -dims & echo $! > /tmp/droid-caffeinate.pid && echo '☕ Caffeinated! Your Mac will stay awake during this session.'"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [ -f /tmp/droid-caffeinate.pid ]; then kill $(cat /tmp/droid-caffeinate.pid) 2>/dev/null; rm -f /tmp/droid-caffeinate.pid; echo '😴 Decaffeinated! Your Mac can sleep now.'; fi"
+          }
+        ]
+      }
+    ]
+  }
+}

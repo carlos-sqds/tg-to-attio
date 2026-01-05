@@ -2,7 +2,7 @@ import { logger } from "@/src/lib/logger";
 import { BUILD_INFO } from "@/src/lib/build-info";
 import type { ForwardedMessageData } from "@/src/types";
 import type { SuggestedAction, AttioSchema } from "@/src/services/attio/schema-types";
-import { telegramHook, type TelegramEvent, type CallerInfo } from "./hooks";
+import { telegramHook, type CallerInfo } from "./hooks";
 import {
   sendMessage,
   editMessage,
@@ -135,12 +135,12 @@ Commands:
 
             if (result.success) {
               let successMsg = "✅ Created successfully!";
-              
+
               // Add link to main record
               if (result.recordUrl) {
                 successMsg += `\n\n🔗 [View in Attio](${result.recordUrl})`;
               }
-              
+
               // Add links to created prerequisites (companies, people)
               if (result.createdPrerequisites && result.createdPrerequisites.length > 0) {
                 successMsg += "\n\n📦 Also created:";
@@ -162,10 +162,10 @@ Commands:
                 });
               }
 
-              logger.info("Action executed", { 
-                userId, 
+              logger.info("Action executed", {
+                userId,
                 intent: currentAction.intent,
-                recordId: result.recordId 
+                recordId: result.recordId,
               });
             } else {
               if (lastBotMessageId) {
@@ -285,7 +285,10 @@ Commands:
               messageId: lastBotMessageId,
               text: "Select an assignee:",
               replyMarkup: {
-                inline_keyboard: buildMemberSelectionKeyboard(currentSchema.workspaceMembers, assigneeSelectionPage),
+                inline_keyboard: buildMemberSelectionKeyboard(
+                  currentSchema.workspaceMembers,
+                  assigneeSelectionPage
+                ),
               },
             });
           }
@@ -302,7 +305,10 @@ Commands:
               messageId: lastBotMessageId,
               text: "Select an assignee:",
               replyMarkup: {
-                inline_keyboard: buildMemberSelectionKeyboard(currentSchema.workspaceMembers, assigneeSelectionPage),
+                inline_keyboard: buildMemberSelectionKeyboard(
+                  currentSchema.workspaceMembers,
+                  assigneeSelectionPage
+                ),
               },
             });
           }
@@ -439,9 +445,7 @@ Commands:
 
           await sendMessage({
             chatId,
-            text: count > 0 
-              ? `🗑️ Cleared ${count} message(s).` 
-              : "✨ Queue is already empty.",
+            text: count > 0 ? `🗑️ Cleared ${count} message(s).` : "✨ Queue is already empty.",
           });
           continue;
         }
@@ -482,19 +486,21 @@ Commands:
         if (command === "/session") {
           const now = new Date();
           const sessionAge = Math.floor((now.getTime() - sessionStartTime.getTime()) / 1000);
-          const sessionAgeStr = sessionAge < 60 
-            ? `${sessionAge}s` 
-            : sessionAge < 3600 
-              ? `${Math.floor(sessionAge / 60)}m ${sessionAge % 60}s`
-              : `${Math.floor(sessionAge / 3600)}h ${Math.floor((sessionAge % 3600) / 60)}m`;
+          const sessionAgeStr =
+            sessionAge < 60
+              ? `${sessionAge}s`
+              : sessionAge < 3600
+                ? `${Math.floor(sessionAge / 60)}m ${sessionAge % 60}s`
+                : `${Math.floor(sessionAge / 3600)}h ${Math.floor((sessionAge % 3600) / 60)}m`;
 
           const buildDate = new Date(BUILD_INFO.buildTime);
           const buildAge = Math.floor((now.getTime() - buildDate.getTime()) / 1000 / 60);
-          const buildAgeStr = buildAge < 60 
-            ? `${buildAge}m ago` 
-            : buildAge < 1440 
-              ? `${Math.floor(buildAge / 60)}h ago`
-              : `${Math.floor(buildAge / 1440)}d ago`;
+          const buildAgeStr =
+            buildAge < 60
+              ? `${buildAge}m ago`
+              : buildAge < 1440
+                ? `${Math.floor(buildAge / 60)}h ago`
+                : `${Math.floor(buildAge / 1440)}d ago`;
 
           await sendMessage({
             chatId,
@@ -539,7 +545,7 @@ Send /start to create a fresh session.`,
           console.log("[WORKFLOW] Processing /done command");
           const instruction = text.replace("/done", "").trim();
           currentInstruction = instruction; // Store for later use in date extraction
-          
+
           // Store caller info for assignee resolution (from TelegramMessageEvent)
           if (event.callerInfo) {
             callerInfo = event.callerInfo;
@@ -564,7 +570,10 @@ Send /start to create a fresh session.`,
 
           // Process with AI
           state = "processing_ai";
-          console.log("[WORKFLOW] Starting AI processing", { hasMessageId: !!event.messageId, queueLength: messageQueue.length });
+          console.log("[WORKFLOW] Starting AI processing", {
+            hasMessageId: !!event.messageId,
+            queueLength: messageQueue.length,
+          });
 
           try {
             // Lazy load schema first (outside the callback)
@@ -572,9 +581,9 @@ Send /start to create a fresh session.`,
             if (!schema) {
               schema = await fetchFullSchemaCached();
             }
-            console.log("[WORKFLOW] Schema loaded", { 
-              objectCount: schema.objects.length, 
-              memberCount: schema.workspaceMembers.length 
+            console.log("[WORKFLOW] Schema loaded", {
+              objectCount: schema.objects.length,
+              memberCount: schema.workspaceMembers.length,
             });
 
             // Prepare messages for AI
@@ -599,8 +608,17 @@ Send /start to create a fresh session.`,
             if (currentAction.intent === "create_task" && schema) {
               console.log("[WORKFLOW] Resolving assignee for task...");
               const currentSchema = schema as AttioSchema;
-              const assigneeName = String(currentAction.extractedData.assignee || currentAction.extractedData.assignee_email || "");
-              const resolved = await resolveAssignee(assigneeName, callerInfo, currentSchema.workspaceMembers, true);
+              const assigneeName = String(
+                currentAction.extractedData.assignee ||
+                  currentAction.extractedData.assignee_email ||
+                  ""
+              );
+              const resolved = await resolveAssignee(
+                assigneeName,
+                callerInfo,
+                currentSchema.workspaceMembers,
+                true
+              );
               console.log("[WORKFLOW] Assignee resolved", { assigneeName, resolved: !!resolved });
               if (resolved) {
                 currentAction.extractedData.assignee_id = resolved.memberId;
@@ -674,8 +692,17 @@ Send /start to create a fresh session.`,
             // Auto-resolve assignee for tasks (handles "me", empty, or name)
             if (currentAction.intent === "create_task" && schema) {
               const currentSchema = schema as AttioSchema;
-              const assigneeName = String(currentAction.extractedData.assignee || currentAction.extractedData.assignee_email || "");
-              const resolved = await resolveAssignee(assigneeName, callerInfo, currentSchema.workspaceMembers, true);
+              const assigneeName = String(
+                currentAction.extractedData.assignee ||
+                  currentAction.extractedData.assignee_email ||
+                  ""
+              );
+              const resolved = await resolveAssignee(
+                assigneeName,
+                callerInfo,
+                currentSchema.workspaceMembers,
+                true
+              );
               if (resolved) {
                 currentAction.extractedData.assignee_id = resolved.memberId;
                 currentAction.extractedData.assignee = resolved.memberName;
@@ -711,12 +738,7 @@ Send /start to create a fresh session.`,
 
           try {
             const processWithAI = async () => {
-              return await processClarification(
-                currentAction!,
-                clarification.field,
-                text,
-                schema!
-              );
+              return await processClarification(currentAction!, clarification.field, text, schema!);
             };
 
             if (event.messageId) {
@@ -753,12 +775,7 @@ Send /start to create a fresh session.`,
 
           try {
             const processWithAI = async () => {
-              return await processClarification(
-                currentAction!,
-                fieldToEdit,
-                text,
-                schema!
-              );
+              return await processClarification(currentAction!, fieldToEdit, text, schema!);
             };
 
             if (event.messageId) {
@@ -793,7 +810,12 @@ Send /start to create a fresh session.`,
         if (state === "awaiting_assignee_input" && currentAction && schema) {
           const currentSchema = schema as AttioSchema;
           try {
-            const resolved = await resolveAssignee(text, callerInfo, currentSchema.workspaceMembers, false);
+            const resolved = await resolveAssignee(
+              text,
+              callerInfo,
+              currentSchema.workspaceMembers,
+              false
+            );
 
             if (resolved) {
               currentAction.extractedData.assignee_id = resolved.memberId;

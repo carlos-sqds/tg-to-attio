@@ -1,6 +1,6 @@
 import { logger } from "@/src/lib/logger";
 import type { ForwardedMessageData, RecentCompany, CompanySearchResult } from "@/src/types";
-import { telegramHook, type TelegramEvent } from "./hooks";
+import { telegramHook } from "./hooks";
 import {
   sendMessage,
   editMessage,
@@ -211,7 +211,10 @@ Commands:
 
           await sendMessage({
             chatId,
-            text: count > 0 ? `🗑️ Cleared ${count} message(s) from queue.` : "✨ Queue is already empty.",
+            text:
+              count > 0
+                ? `🗑️ Cleared ${count} message(s) from queue.`
+                : "✨ Queue is already empty.",
           });
           continue;
         }
@@ -250,8 +253,7 @@ Commands:
               minute: "2-digit",
             });
 
-          const escapeMarkdown = (text: string) =>
-            text.replace(/[_*[\]()~`>#+=|{}.!-]/g, "\\$&");
+          const escapeMarkdown = (text: string) => text.replace(/[_*[\]()~`>#+=|{}.!-]/g, "\\$&");
           const firstPreview =
             escapeMarkdown(firstMessage.text.substring(0, 100)) +
             (firstMessage.text.length > 100 ? "..." : "");
@@ -295,7 +297,7 @@ Which company are these messages for?`;
       // Handle text messages (company search)
       if (event.type === "text_message") {
         console.log("[WORKFLOW] text_message received, state:", state, "text:", event.text);
-        
+
         if (state !== "awaiting_company_search") {
           console.log("[WORKFLOW] Ignoring text_message - not in awaiting_company_search state");
           continue;

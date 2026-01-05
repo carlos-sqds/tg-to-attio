@@ -36,15 +36,18 @@ async function telegramRequest<T>(method: string, body: Record<string, unknown>)
 
   if (!response.ok) {
     const errorBody = await response.text();
-    logger.error("Telegram API error", { 
-      method, 
-      status: response.status, 
+    logger.error("Telegram API error", {
+      method,
+      status: response.status,
       error: errorBody,
-      requestBody: method === "editMessageText" ? { 
-        textLength: String(body.text || "").length,
-        textPreview: String(body.text || "").substring(0, 100),
-        hasKeyboard: !!body.reply_markup 
-      } : undefined
+      requestBody:
+        method === "editMessageText"
+          ? {
+              textLength: String(body.text || "").length,
+              textPreview: String(body.text || "").substring(0, 100),
+              hasKeyboard: !!body.reply_markup,
+            }
+          : undefined,
     });
     throw new Error(`Telegram API error: ${response.status} - ${errorBody}`);
   }
@@ -103,7 +106,7 @@ export async function setMessageReaction(
   emoji: string | null
 ): Promise<void> {
   "use step";
-  
+
   const body: Record<string, unknown> = {
     chat_id: chatId,
     message_id: messageId,
@@ -127,10 +130,10 @@ export async function withCyclingReaction<T>(
   operation: () => Promise<T>
 ): Promise<T> {
   // NOTE: No "use step" - this function accepts a callback which can't be serialized
-  
+
   let currentIndex = 0;
   let stopped = false;
-  
+
   // Start cycling reactions
   const cycleReactions = async () => {
     while (!stopped) {
@@ -145,13 +148,13 @@ export async function withCyclingReaction<T>(
         // Ignore reaction errors
       }
       currentIndex++;
-      await new Promise(resolve => setTimeout(resolve, REACTION_CYCLE_MS));
+      await new Promise((resolve) => setTimeout(resolve, REACTION_CYCLE_MS));
     }
   };
-  
+
   // Start cycling in background (don't await)
-  const cyclePromise = cycleReactions();
-  
+  void cycleReactions();
+
   try {
     // Run the actual operation
     const result = await operation();
@@ -252,9 +255,7 @@ export function buildAISuggestionKeyboard(
   return keyboard;
 }
 
-export function buildClarificationKeyboard(
-  options?: string[]
-): InlineKeyboardButton[][] {
+export function buildClarificationKeyboard(options?: string[]): InlineKeyboardButton[][] {
   const keyboard: InlineKeyboardButton[][] = [];
 
   if (options && options.length > 0) {
@@ -272,9 +273,7 @@ export function buildClarificationKeyboard(
   return keyboard;
 }
 
-export function buildEditFieldKeyboard(
-  fields: string[]
-): InlineKeyboardButton[][] {
+export function buildEditFieldKeyboard(fields: string[]): InlineKeyboardButton[][] {
   const keyboard: InlineKeyboardButton[][] = [];
 
   // Show up to 3 fields per row
@@ -350,7 +349,7 @@ export function buildMemberSelectionKeyboard(
 
 // ============ MESSAGE FORMATTERS ============
 
-function escapeMarkdown(text: string): string {
+function _escapeMarkdown(text: string): string {
   return String(text).replace(/[_*[\]()~`>#+=|{}.!-]/g, "\\$&");
 }
 
@@ -401,7 +400,13 @@ export function formatSuggestedAction(action: {
   };
 
   // Skip these internal fields
-  const skipFields = new Set(["noteTitle", "linked_record_id", "linked_record_object", "assignee_email", "assignee_id"]);
+  const skipFields = new Set([
+    "noteTitle",
+    "linked_record_id",
+    "linked_record_object",
+    "assignee_email",
+    "assignee_id",
+  ]);
 
   let text = `${intentLabels[action.intent] || action.intent}\n\n`;
 
@@ -410,7 +415,7 @@ export function formatSuggestedAction(action: {
 
   for (const [key, value] of Object.entries(action.extractedData)) {
     if (!value || skipFields.has(key)) continue;
-    
+
     const config = fieldConfig[key] || { label: key.replace(/_/g, " "), priority: 99 };
     let displayValue: string;
 
@@ -432,11 +437,11 @@ export function formatSuggestedAction(action: {
       if (displayValue.match(/^\d{4}-\d{2}-\d{2}/)) {
         const date = new Date(displayValue);
         if (!isNaN(date.getTime())) {
-          displayValue = date.toLocaleDateString("en-US", { 
-            weekday: "short", 
-            month: "short", 
+          displayValue = date.toLocaleDateString("en-US", {
+            weekday: "short",
+            month: "short",
             day: "numeric",
-            year: date.getFullYear() !== new Date().getFullYear() ? "numeric" : undefined
+            year: date.getFullYear() !== new Date().getFullYear() ? "numeric" : undefined,
           });
         }
       }

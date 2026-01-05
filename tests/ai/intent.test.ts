@@ -10,66 +10,70 @@ beforeAll(() => {
 });
 
 function runTestCase(tc: AITestCase) {
-  it(tc.name, async () => {
-    const result = await analyzeIntentLocal({
-      messages: tc.messages,
-      instruction: tc.instruction,
-      schema: mockSchema,
-    });
+  it(
+    tc.name,
+    async () => {
+      const result = await analyzeIntentLocal({
+        messages: tc.messages,
+        instruction: tc.instruction,
+        schema: mockSchema,
+      });
 
-    // Check intent
-    expect(result.intent).toBe(tc.expectedIntent);
+      // Check intent
+      expect(result.intent).toBe(tc.expectedIntent);
 
-    // Check confidence is reasonable
-    expect(result.confidence).toBeGreaterThan(0.5);
+      // Check confidence is reasonable
+      expect(result.confidence).toBeGreaterThan(0.5);
 
-    // Check extracted data
-    if (tc.expectedExtraction) {
-      const extractedJson = JSON.stringify(result.extractedData).toLowerCase();
-      
-      for (const [key, expectedValue] of Object.entries(tc.expectedExtraction)) {
-        if (typeof expectedValue === "string") {
-          // For strings, check if the value appears anywhere in extracted data
-          expect(extractedJson).toContain(String(expectedValue).toLowerCase());
-        } else if (typeof expectedValue === "number") {
-          // For numbers, check if a similar number appears in extracted data
-          const numberPattern = new RegExp(`${expectedValue}|${expectedValue / 1000}k`, "i");
-          expect(extractedJson).toMatch(numberPattern);
+      // Check extracted data
+      if (tc.expectedExtraction) {
+        const extractedJson = JSON.stringify(result.extractedData).toLowerCase();
+
+        for (const [_key, expectedValue] of Object.entries(tc.expectedExtraction)) {
+          if (typeof expectedValue === "string") {
+            // For strings, check if the value appears anywhere in extracted data
+            expect(extractedJson).toContain(String(expectedValue).toLowerCase());
+          } else if (typeof expectedValue === "number") {
+            // For numbers, check if a similar number appears in extracted data
+            const numberPattern = new RegExp(`${expectedValue}|${expectedValue / 1000}k`, "i");
+            expect(extractedJson).toMatch(numberPattern);
+          }
         }
       }
-    }
 
-    // Check clarifications needed
-    if (tc.expectedClarification) {
-      expect(result.clarificationsNeeded.length).toBeGreaterThan(0);
-      const clarification = result.clarificationsNeeded.find(
-        (c) => c.field === tc.expectedClarification!.field
-      );
-      expect(clarification).toBeDefined();
-      if (tc.expectedClarification.reason) {
-        expect(clarification?.reason).toBe(tc.expectedClarification.reason);
+      // Check clarifications needed
+      if (tc.expectedClarification) {
+        expect(result.clarificationsNeeded.length).toBeGreaterThan(0);
+        const clarification = result.clarificationsNeeded.find(
+          (c) => c.field === tc.expectedClarification!.field
+        );
+        expect(clarification).toBeDefined();
+        if (tc.expectedClarification.reason) {
+          expect(clarification?.reason).toBe(tc.expectedClarification.reason);
+        }
       }
-    }
 
-    // Check missing required fields
-    if (tc.expectedMissingRequired) {
-      for (const field of tc.expectedMissingRequired) {
-        expect(result.missingRequired).toContain(field);
+      // Check missing required fields
+      if (tc.expectedMissingRequired) {
+        for (const field of tc.expectedMissingRequired) {
+          expect(result.missingRequired).toContain(field);
+        }
       }
-    }
 
-    // Log for debugging
-    console.log(`\n[${tc.name}]`);
-    console.log(`Intent: ${result.intent} (confidence: ${result.confidence})`);
-    console.log(`Extracted:`, result.extractedData);
-    console.log(`Reasoning: ${result.reasoning}`);
-    if (result.clarificationsNeeded.length > 0) {
-      console.log(`Clarifications:`, result.clarificationsNeeded);
-    }
-    if (result.missingRequired.length > 0) {
-      console.log(`Missing required:`, result.missingRequired);
-    }
-  }, 60000); // 60s timeout for AI calls
+      // Log for debugging
+      console.log(`\n[${tc.name}]`);
+      console.log(`Intent: ${result.intent} (confidence: ${result.confidence})`);
+      console.log(`Extracted:`, result.extractedData);
+      console.log(`Reasoning: ${result.reasoning}`);
+      if (result.clarificationsNeeded.length > 0) {
+        console.log(`Clarifications:`, result.clarificationsNeeded);
+      }
+      if (result.missingRequired.length > 0) {
+        console.log(`Missing required:`, result.missingRequired);
+      }
+    },
+    60000
+  ); // 60s timeout for AI calls
 }
 
 describe("AI Intent Classification", () => {

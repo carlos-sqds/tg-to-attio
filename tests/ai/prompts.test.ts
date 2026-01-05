@@ -188,7 +188,7 @@ describe("buildSystemPrompt", () => {
     const prompt = buildSystemPrompt(minimalSchema);
 
     expect(prompt).toContain("noteTitle");
-    expect(prompt).toContain("forwarded messages will ALWAYS be saved as a note");
+    expect(prompt).toContain("forwarded messages are provided, they will be saved as a note");
   });
 
   it("handles empty lists array", () => {

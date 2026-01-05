@@ -34,10 +34,18 @@ export interface TelegramCallbackEvent {
   callbackQueryId: string;
 }
 
+export interface TelegramNewCommandEvent {
+  type: "new_command";
+  instruction: string;
+  messageId?: number;
+  callerInfo?: CallerInfo;
+}
+
 export type TelegramEvent =
   | TelegramTerminateEvent
   | TelegramMessageEvent
   | TelegramForwardWithInstructionEvent
-  | TelegramCallbackEvent;
+  | TelegramCallbackEvent
+  | TelegramNewCommandEvent;
 
 export const telegramHook = defineHook<TelegramEvent>();

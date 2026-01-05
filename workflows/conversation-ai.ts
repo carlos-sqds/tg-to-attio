@@ -12,10 +12,12 @@ import {
   buildClarificationKeyboard,
   buildEditFieldKeyboard,
   buildMemberSelectionKeyboard,
+  buildNoteParentTypeKeyboard,
+  buildNoteParentSearchResultsKeyboard,
   formatSuggestedAction,
 } from "./steps/telegram";
 import { analyzeIntent, processClarification, resolveAssignee } from "./steps/ai";
-import { executeActionWithNote } from "./steps/attio-actions";
+import { executeActionWithNote, searchRecords } from "./steps/attio-actions";
 import { fetchFullSchemaCached } from "./steps/attio-schema";
 import { formatMessagesForSingleNote } from "@/src/services/attio/formatters";
 
@@ -29,6 +31,9 @@ type ConversationState =
   | "awaiting_edit_value"
   | "awaiting_assignee_selection"
   | "awaiting_assignee_input"
+  | "awaiting_note_parent_type"
+  | "awaiting_note_parent_search"
+  | "awaiting_note_parent_selection"
   | "executing";
 
 export async function conversationWorkflowAI(userId: number, chatId: number) {
@@ -44,6 +49,8 @@ export async function conversationWorkflowAI(userId: number, chatId: number) {
   let currentInstruction: string | null = null; // Store for date extraction
   let callerInfo: CallerInfo | null = null; // Store caller info for assignee resolution
   let assigneeSelectionPage = 0; // Pagination for assignee selection
+  let noteParentType: "companies" | "people" | "deals" | null = null; // For note parent selection
+  let noteParentSearchResults: Array<{ id: string; name: string; extra?: string }> = [];
   const sessionStartTime = new Date();
 
   // Send welcome message
@@ -56,24 +63,25 @@ export async function conversationWorkflowAI(userId: number, chatId: number) {
 • Add records to lists and pipelines
 • Create tasks with assignees and due dates
 • Add notes to any record
-• Search and update existing records
 • Auto-extract names, emails, phones, values
 
 📋 How to use:
 
+🆕 Direct create (no forwarding):
+/new create task for John to call Acme
+/new add company TechCorp
+/new person Jane from TechCorp
+/new deal $50k with Acme
+
 ⚡ Quick capture (single message):
-Forward a message and add your instruction as caption
-Example: forward + "create contact"
+Forward a message + add instruction as caption
 
 📦 Batch capture (multiple messages):
 1️⃣ Forward messages from any conversation
-2️⃣ Send /done followed by your instruction
-   • /done create a contact
-   • /done add to sales pipeline
-   • /done create a $50k deal
+2️⃣ /done create a contact
 3️⃣ Review and confirm
 
-Commands: /done /clear /cancel /session /help`,
+Commands: /new /done /clear /cancel /help`,
   });
 
   logger.info("AI Workflow started", { userId, chatId });
@@ -445,6 +453,56 @@ Commands: /done /clear /cancel /session /help`,
           continue;
         }
 
+        // Note parent type selected
+        if (data.startsWith("note_parent_type:") && currentAction) {
+          noteParentType = data.replace("note_parent_type:", "") as
+            | "companies"
+            | "people"
+            | "deals";
+          state = "awaiting_note_parent_search";
+
+          const typeLabels = { companies: "company", people: "person", deals: "deal" };
+          await sendMessage({
+            chatId,
+            text: `🔍 Type the name of the ${typeLabels[noteParentType]} to add the note to:`,
+          });
+          continue;
+        }
+
+        // Note parent selected from search results
+        if (data.startsWith("note_parent_select:") && currentAction && noteParentType) {
+          const parentId = data.replace("note_parent_select:", "");
+          const selected = noteParentSearchResults.find((r) => r.id === parentId);
+
+          if (selected) {
+            currentAction.extractedData.parent_object = noteParentType;
+            currentAction.extractedData.parent_record_id = parentId;
+            currentAction.extractedData.parent_name = selected.name;
+
+            state = "awaiting_confirmation";
+            const suggestionText = formatSuggestedAction(currentAction);
+
+            lastBotMessageId = await sendMessage({
+              chatId,
+              text: suggestionText,
+              replyMarkup: {
+                inline_keyboard: buildAISuggestionKeyboard(false, currentAction.intent),
+              },
+            });
+          }
+          continue;
+        }
+
+        // Search again for note parent
+        if (data === "note_parent_search_again") {
+          state = "awaiting_note_parent_search";
+          await sendMessage({
+            chatId,
+            text: "🔍 Type a name to search:",
+          });
+          continue;
+        }
+
         continue;
       }
 
@@ -489,6 +547,14 @@ Commands: /done /clear /cancel /session /help`,
 /done create deal for X - Create a deal
 /done add note to X - Add note to record
 /done remind X to Y - Create a task
+
+**Or create directly without forwarding:**
+
+/new create task for John - Create a task
+/new add company Acme - Create a company
+/new person Jane from TechCorp - Create a person
+/new deal $50k with Acme - Create a deal
+/new add note to TechCorp - Add a note
 
 /clear - Clear queued messages
 /cancel - Cancel current operation
@@ -535,6 +601,149 @@ Send /start to create a fresh session.`,
           continue;
         }
 
+        continue;
+      }
+
+      // Handle /new command - create resources without forwarding messages
+      if (event.type === "new_command") {
+        const instruction = event.instruction;
+
+        if (event.callerInfo) {
+          callerInfo = event.callerInfo;
+        }
+
+        // Clear any existing message queue - /new creates without forwarded messages
+        messageQueue = [];
+        currentInstruction = instruction;
+        state = "processing_ai";
+
+        console.log("[WORKFLOW] /new command", { instruction: instruction.substring(0, 50) });
+
+        try {
+          if (event.messageId) {
+            await setMessageReaction(chatId, event.messageId, "🤔");
+          }
+
+          if (!schema) {
+            schema = await fetchFullSchemaCached();
+          }
+
+          // Analyze intent with empty messages - AI will extract from instruction only
+          currentAction = await analyzeIntent({
+            messages: [],
+            instruction,
+            schema: schema!,
+          });
+
+          if (event.messageId) {
+            await setMessageReaction(chatId, event.messageId, null);
+          }
+
+          // For add_note without a parent, prompt user to select parent type
+          if (
+            currentAction.intent === "add_note" &&
+            !currentAction.extractedData.parent_record_id
+          ) {
+            // Check if AI extracted a parent name we can search for
+            const parentName = String(
+              currentAction.extractedData.company ||
+                currentAction.extractedData.person ||
+                currentAction.extractedData.parent_name ||
+                ""
+            );
+
+            if (parentName) {
+              // Try to find the parent record
+              noteParentType =
+                (currentAction.extractedData.parent_object as "companies" | "people" | "deals") ||
+                "companies";
+              noteParentSearchResults = await searchRecords(noteParentType, parentName);
+
+              if (noteParentSearchResults.length > 0) {
+                state = "awaiting_note_parent_selection";
+                lastBotMessageId = await sendMessage({
+                  chatId,
+                  text: `📝 Adding note to which ${noteParentType.slice(0, -1)}?`,
+                  replyMarkup: {
+                    inline_keyboard: buildNoteParentSearchResultsKeyboard(noteParentSearchResults),
+                  },
+                });
+              } else {
+                // No results, ask to select type and search
+                state = "awaiting_note_parent_type";
+                await sendMessage({
+                  chatId,
+                  text: `📝 No ${noteParentType} found matching "${parentName}".\n\nSelect where to add the note:`,
+                  replyMarkup: {
+                    inline_keyboard: buildNoteParentTypeKeyboard(),
+                  },
+                });
+              }
+            } else {
+              // No parent specified, ask user to select type
+              state = "awaiting_note_parent_type";
+              await sendMessage({
+                chatId,
+                text: "📝 Select where to add the note:",
+                replyMarkup: {
+                  inline_keyboard: buildNoteParentTypeKeyboard(),
+                },
+              });
+            }
+            continue;
+          }
+
+          // Auto-resolve assignee for tasks
+          if (currentAction.intent === "create_task" && schema) {
+            const currentSchema = schema as AttioSchema;
+            const assigneeName = String(
+              currentAction.extractedData.assignee ||
+                currentAction.extractedData.assignee_email ||
+                ""
+            );
+            const resolved = await resolveAssignee(
+              assigneeName,
+              callerInfo,
+              currentSchema.workspaceMembers,
+              true
+            );
+            if (resolved) {
+              currentAction.extractedData.assignee_id = resolved.memberId;
+              currentAction.extractedData.assignee = resolved.memberName;
+              currentAction.extractedData.assignee_email = resolved.email;
+            }
+          }
+
+          state = "awaiting_confirmation";
+          const suggestionText = formatSuggestedAction(currentAction);
+          const hasClarifications = currentAction.clarificationsNeeded.length > 0;
+
+          lastBotMessageId = await sendMessage({
+            chatId,
+            text: suggestionText,
+            replyMarkup: {
+              inline_keyboard: buildAISuggestionKeyboard(hasClarifications, currentAction.intent),
+            },
+          });
+
+          logger.info("AI suggestion generated (/new)", {
+            userId,
+            intent: currentAction.intent,
+            confidence: currentAction.confidence,
+          });
+        } catch (error) {
+          if (event.messageId) {
+            await setMessageReaction(chatId, event.messageId, null);
+          }
+          const errorMsg = error instanceof Error ? error.message : String(error);
+          logger.error("AI analysis failed (/new)", { userId, error: errorMsg });
+
+          await sendMessage({
+            chatId,
+            text: `❌ AI analysis failed: ${errorMsg.substring(0, 200)}`,
+          });
+          state = "idle";
+        }
         continue;
       }
 
@@ -985,6 +1194,49 @@ Send /start to create a fresh session.`,
               text: `❌ Failed to resolve assignee: ${errorMsg.substring(0, 200)}`,
             });
             state = "awaiting_confirmation";
+          }
+          continue;
+        }
+
+        // Handle note parent search input
+        if (state === "awaiting_note_parent_search" && currentAction && noteParentType) {
+          const query = text;
+
+          await sendMessage({ chatId, text: "🔍 Searching..." });
+
+          try {
+            noteParentSearchResults = await searchRecords(noteParentType, query);
+
+            if (noteParentSearchResults.length === 0) {
+              await sendMessage({
+                chatId,
+                text: `No results found for "${query}". Try different terms.`,
+                replyMarkup: {
+                  inline_keyboard: [
+                    [
+                      { text: "🔍 Search again", callback_data: "note_parent_search_again" },
+                      { text: "❌ Cancel", callback_data: "cancel" },
+                    ],
+                  ],
+                },
+              });
+              continue;
+            }
+
+            state = "awaiting_note_parent_selection";
+            lastBotMessageId = await sendMessage({
+              chatId,
+              text: "Select a record:",
+              replyMarkup: {
+                inline_keyboard: buildNoteParentSearchResultsKeyboard(noteParentSearchResults),
+              },
+            });
+          } catch (error) {
+            const errorMsg = error instanceof Error ? error.message : String(error);
+            await sendMessage({
+              chatId,
+              text: `❌ Search failed: ${errorMsg.substring(0, 200)}`,
+            });
           }
           continue;
         }

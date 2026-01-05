@@ -347,6 +347,35 @@ export function buildMemberSelectionKeyboard(
   return keyboard;
 }
 
+// ============ NOTE PARENT SELECTION KEYBOARDS ============
+
+export function buildNoteParentTypeKeyboard(): InlineKeyboardButton[][] {
+  return [
+    [{ text: "🏢 Company", callback_data: "note_parent_type:companies" }],
+    [{ text: "👤 Person", callback_data: "note_parent_type:people" }],
+    [{ text: "💰 Deal", callback_data: "note_parent_type:deals" }],
+    [{ text: "❌ Cancel", callback_data: "cancel" }],
+  ];
+}
+
+export function buildNoteParentSearchResultsKeyboard(
+  results: Array<{ id: string; name: string; extra?: string }>
+): InlineKeyboardButton[][] {
+  const keyboard: InlineKeyboardButton[][] = [];
+
+  for (const result of results.slice(0, 5)) {
+    const label = result.extra ? `${result.name} (${result.extra})` : result.name;
+    keyboard.push([{ text: label, callback_data: `note_parent_select:${result.id}` }]);
+  }
+
+  keyboard.push([
+    { text: "🔍 Search again", callback_data: "note_parent_search_again" },
+    { text: "❌ Cancel", callback_data: "cancel" },
+  ]);
+
+  return keyboard;
+}
+
 // ============ MESSAGE FORMATTERS ============
 
 function _escapeMarkdown(text: string): string {
@@ -383,6 +412,9 @@ export function formatSuggestedAction(action: {
   const fieldConfig: Record<string, { label: string; priority: number }> = {
     name: { label: "Name", priority: 1 },
     content: { label: "Task", priority: 1 },
+    title: { label: "Title", priority: 1 },
+    note_content: { label: "Content", priority: 2 },
+    parent_name: { label: "To", priority: 3 },
     email_addresses: { label: "Email", priority: 2 },
     phone_numbers: { label: "Phone", priority: 3 },
     company: { label: "Company", priority: 4 },
@@ -412,6 +444,8 @@ export function formatSuggestedAction(action: {
     "owner_email",
     "product", // Custom fields that aren't standard
     "context", // Context goes into the note, not shown in preview
+    "parent_object", // Internal field for note parent
+    "parent_record_id", // Internal field for note parent
   ]);
 
   let text = `${intentLabels[action.intent] || action.intent}\n\n`;

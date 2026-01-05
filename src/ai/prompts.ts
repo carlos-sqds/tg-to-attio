@@ -1,4 +1,8 @@
-import type { AttioSchema, ObjectDefinition, ListDefinition } from "@/src/services/attio/schema-types";
+import type {
+  AttioSchema,
+  ObjectDefinition,
+  ListDefinition,
+} from "@/src/services/attio/schema-types";
 
 function formatObjectSchema(obj: ObjectDefinition): string {
   const writableAttrs = obj.attributes
@@ -25,13 +29,9 @@ function formatWorkspaceMembers(schema: AttioSchema): string {
 }
 
 export function buildSystemPrompt(schema: AttioSchema): string {
-  const objectSchemas = schema.objects
-    .map(formatObjectSchema)
-    .join("\n\n");
+  const objectSchemas = schema.objects.map(formatObjectSchema).join("\n\n");
 
-  const listSchemas = schema.lists
-    .map(formatListSchema)
-    .join("\n");
+  const listSchemas = schema.lists.map(formatListSchema).join("\n");
 
   const members = formatWorkspaceMembers(schema);
 
@@ -106,12 +106,24 @@ The prerequisite actions will be executed BEFORE the main action, and their IDs 
 
 ## Important: Note Creation
 
-The forwarded messages will ALWAYS be saved as a note attached to the created/referenced record.
+When forwarded messages are provided, they will be saved as a note attached to the created/referenced record.
 Generate a descriptive "noteTitle" that summarizes the conversation content.
 Examples:
 - "Initial conversation with John Smith from Acme Corp"
 - "Sales discussion - TechCorp enterprise deal"
 - "Follow-up call notes - Project timeline"
+
+When NO messages are provided (direct /new command), use a simple note title like:
+- "Created via /new command" 
+- "Quick add - [record name]"
+
+## Handling Empty Message Context
+
+When no messages are provided and only an instruction exists:
+- Extract ALL relevant data directly from the instruction
+- For add_note: Use the instruction content as the note content, set parent_object based on context
+- Be more lenient about missing fields - the user is providing direct input
+- Focus on inferring as much as possible from the instruction alone
 
 Be concise in your reasoning but thorough in extraction.`;
 }
@@ -137,9 +149,10 @@ export function buildUserPrompt(
     })
     .join("\n\n");
 
-  const messagesSection = messages.length > 0
-    ? `## Forwarded Messages\n\n${formattedMessages}`
-    : "## No forwarded messages provided";
+  const messagesSection =
+    messages.length > 0
+      ? `## Forwarded Messages\n\n${formattedMessages}`
+      : "## No forwarded messages provided";
 
   return `${messagesSection}
 

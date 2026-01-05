@@ -277,6 +277,46 @@ export async function POST(request: NextRequest) {
           return NextResponse.json({ ok: true });
         }
 
+        // For /new, send as new_command with the instruction
+        if (command === "/new") {
+          const instruction = text.replace(/^\/new\s*/i, "").trim();
+          console.log(
+            "[WEBHOOK] /new command received, instruction:",
+            instruction.substring(0, 50)
+          );
+
+          if (!instruction) {
+            await sendTelegramMessage(
+              chatId,
+              `Usage: /new <instruction>
+
+Examples:
+• /new create task for John to call Acme
+• /new add company TechCorp
+• /new person Jane Doe from TechCorp
+• /new deal $50k with Acme
+• /new add note to TechCorp`
+            );
+            return NextResponse.json({ ok: true });
+          }
+
+          const event: TelegramEvent = {
+            type: "new_command",
+            instruction,
+            messageId: msg.message_id,
+            callerInfo: {
+              firstName: msg.from?.first_name,
+              lastName: msg.from?.last_name,
+              username: msg.from?.username,
+            },
+          };
+          const success = await tryResumeWorkflow(userId, chatId, event);
+          if (!success) {
+            await sendTelegramMessage(chatId, "Please send /start first to begin.");
+          }
+          return NextResponse.json({ ok: true });
+        }
+
         const event: TelegramEvent = { type: "command", command, messageId: msg.message_id };
         const success = await tryResumeWorkflow(userId, chatId, event);
         if (!success) {

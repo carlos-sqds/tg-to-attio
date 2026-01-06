@@ -129,10 +129,9 @@ export async function createPerson(input: CreatePersonInput): Promise<ActionResu
   }
 
   if (input.company) {
-    // Reference company by name - Attio will match or create
+    // Reference company by name - Attio will match existing or create new
     values.company = {
       target_object: "companies",
-      target_record_id: null, // Let Attio match by name
       display_name: input.company,
     };
   }

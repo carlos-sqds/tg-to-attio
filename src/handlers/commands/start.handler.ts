@@ -8,9 +8,11 @@ import { WELCOME_TEXT } from "@/src/lib/telegram/commands";
  */
 export async function handleStart(ctx: CommandContext<Context>): Promise<void> {
   const chatId = ctx.chat.id;
+  const userId = ctx.from?.id;
+  if (!userId) return;
 
   // Reset session (clears any existing state)
-  await resetSession(chatId);
+  await resetSession(chatId, userId);
 
   // Send welcome message
   await ctx.reply(WELCOME_TEXT);

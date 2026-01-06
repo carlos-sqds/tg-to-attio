@@ -62,7 +62,8 @@ function extractForwardedMessage(ctx: Context): ForwardedMessageData | null {
  */
 export async function handleForward(ctx: Context): Promise<void> {
   const chatId = ctx.chat?.id;
-  if (!chatId) return;
+  const userId = ctx.from?.id;
+  if (!chatId || !userId) return;
 
   // Extract forwarded message data
   const forwardedMessage = extractForwardedMessage(ctx);
@@ -71,19 +72,19 @@ export async function handleForward(ctx: Context): Promise<void> {
   }
 
   // Get session
-  const session = await getOrCreateSession(chatId);
+  const session = await getOrCreateSession(chatId, userId);
 
   // Add to queue
   const updatedQueue = [...session.messageQueue, forwardedMessage];
 
   // Check for pending instruction (forward + instruction correlation)
-  const pending = await getPending(chatId);
+  const pending = await getPending(chatId, userId);
   if (pending) {
     // Clear pending and process with instruction
-    await clearPending(chatId);
+    await clearPending(chatId, userId);
 
     // Update session and trigger processing
-    await updateSession(chatId, {
+    await updateSession(chatId, userId, {
       messageQueue: updatedQueue,
       state: { type: "gathering_messages" },
     });
@@ -103,7 +104,7 @@ export async function handleForward(ctx: Context): Promise<void> {
     );
   } else {
     // Just add to queue
-    await updateSession(chatId, {
+    await updateSession(chatId, userId, {
       messageQueue: updatedQueue,
       state: { type: "gathering_messages" },
     });

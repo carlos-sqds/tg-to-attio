@@ -11,6 +11,7 @@ import type {
  * Used for "me" resolution and default assignee.
  */
 export interface CallerInfo {
+  userId: number; // Telegram user ID
   firstName?: string;
   lastName?: string;
   username?: string;
@@ -106,6 +107,9 @@ export interface SessionState {
   /** Caller info for "me" and default assignee resolution */
   callerInfo: CallerInfo | null;
 
+  /** User ID who initiated the current action (for callback validation in groups) */
+  initiatingUserId: number | null;
+
   /** Session metadata */
   createdAt: string;
   updatedAt: string;
@@ -124,6 +128,7 @@ export function createEmptySession(): SessionState {
     lastBotMessageId: null,
     currentInstruction: null,
     callerInfo: null,
+    initiatingUserId: null,
     createdAt: now,
     updatedAt: now,
   };

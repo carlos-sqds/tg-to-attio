@@ -8,13 +8,18 @@ import { buildClarificationKeyboard } from "@/src/lib/telegram/keyboards";
  */
 export async function handleClarify(ctx: Context): Promise<void> {
   const chatId = ctx.chat?.id;
-  if (!chatId) return;
+  const userId = ctx.from?.id;
+  if (!chatId || !userId) return;
 
-  await ctx.answerCallbackQuery();
-
-  const session = await getSession(chatId);
+  const session = await getSession(chatId, userId);
   if (!session || !session.currentAction) {
-    await ctx.editMessageText("❌ Session expired. Please start over.");
+    await ctx.answerCallbackQuery("Session expired. Please start over.");
+    return;
+  }
+
+  // Validate that the user clicking the button is the one who initiated the action
+  if (session.initiatingUserId && session.initiatingUserId !== userId) {
+    await ctx.answerCallbackQuery("This action belongs to another user");
     return;
   }
 
@@ -24,6 +29,8 @@ export async function handleClarify(ctx: Context): Promise<void> {
     return;
   }
 
+  await ctx.answerCallbackQuery();
+
   // Show first clarification question
   const firstQuestion = clarifications[0];
   const keyboard = buildClarificationKeyboard(firstQuestion.options);
@@ -32,7 +39,7 @@ export async function handleClarify(ctx: Context): Promise<void> {
     reply_markup: keyboard,
   });
 
-  await updateSession(chatId, {
+  await updateSession(chatId, userId, {
     state: {
       type: "awaiting_clarification",
       index: 0,
@@ -47,15 +54,22 @@ export async function handleClarify(ctx: Context): Promise<void> {
  */
 export async function handleClarifyOption(ctx: Context, option: string): Promise<void> {
   const chatId = ctx.chat?.id;
-  if (!chatId) return;
+  const userId = ctx.from?.id;
+  if (!chatId || !userId) return;
 
-  await ctx.answerCallbackQuery();
-
-  const session = await getSession(chatId);
+  const session = await getSession(chatId, userId);
   if (!session?.state || session.state.type !== "awaiting_clarification") {
-    await ctx.editMessageText("❌ Session expired. Please start over.");
+    await ctx.answerCallbackQuery("Session expired. Please start over.");
     return;
   }
+
+  // Validate that the user clicking the button is the one who initiated the action
+  if (session.initiatingUserId && session.initiatingUserId !== userId) {
+    await ctx.answerCallbackQuery("This action belongs to another user");
+    return;
+  }
+
+  await ctx.answerCallbackQuery();
 
   const { index, questions } = session.state;
   const currentQuestion = questions[index];
@@ -90,7 +104,7 @@ export async function handleClarifyOption(ctx: Context, option: string): Promise
       const keyboard = buildClarificationKeyboard(nextQuestion.options);
       await ctx.editMessageText(`❓ ${nextQuestion.question}`, { reply_markup: keyboard });
 
-      await updateSession(chatId, {
+      await updateSession(chatId, userId, {
         state: {
           type: "awaiting_clarification",
           index: nextIndex,
@@ -108,7 +122,7 @@ export async function handleClarifyOption(ctx: Context, option: string): Promise
 
       await ctx.editMessageText(suggestionText, { reply_markup: keyboard });
 
-      await updateSession(chatId, {
+      await updateSession(chatId, userId, {
         state: {
           type: "awaiting_confirmation",
           action: updatedAction,

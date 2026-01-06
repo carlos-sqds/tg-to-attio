@@ -11,10 +11,13 @@ import type { CallerInfo } from "@/src/lib/types/session.types";
  */
 export async function handleDone(ctx: CommandContext<Context>): Promise<void> {
   const chatId = ctx.chat.id;
+  const userId = ctx.from?.id;
+  if (!userId) return;
+
   const instruction = ctx.match?.toString().trim() || "";
 
   // Get session
-  const session = await getOrCreateSession(chatId);
+  const session = await getOrCreateSession(chatId, userId);
 
   // Check if we have messages to process
   if (session.messageQueue.length === 0) {
@@ -41,6 +44,7 @@ export async function handleDone(ctx: CommandContext<Context>): Promise<void> {
 
   // Get caller info for "me" resolution
   const callerInfo: CallerInfo = {
+    userId,
     firstName: ctx.from?.first_name,
     lastName: ctx.from?.last_name,
     username: ctx.from?.username,
@@ -104,7 +108,7 @@ export async function handleDone(ctx: CommandContext<Context>): Promise<void> {
     });
 
     // Update session with suggested action
-    await updateSession(chatId, {
+    await updateSession(chatId, userId, {
       state: {
         type: "awaiting_confirmation",
         action: suggestedAction,
@@ -112,6 +116,7 @@ export async function handleDone(ctx: CommandContext<Context>): Promise<void> {
       currentAction: suggestedAction,
       currentInstruction: instruction,
       callerInfo,
+      initiatingUserId: userId,
       schema,
       lastBotMessageId: processingMsg.message_id,
     });

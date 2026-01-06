@@ -10,15 +10,22 @@ import { formatMessagesForSingleNote } from "@/src/services/attio/formatters";
  */
 export async function handleConfirm(ctx: Context): Promise<void> {
   const chatId = ctx.chat?.id;
-  if (!chatId) return;
+  const userId = ctx.from?.id;
+  if (!chatId || !userId) return;
 
-  await ctx.answerCallbackQuery();
-
-  const session = await getSession(chatId);
+  const session = await getSession(chatId, userId);
   if (!session || !session.currentAction) {
-    await ctx.editMessageText("❌ Session expired. Please start over.");
+    await ctx.answerCallbackQuery("Session expired. Please start over.");
     return;
   }
+
+  // Validate that the user clicking the button is the one who initiated the action
+  if (session.initiatingUserId && session.initiatingUserId !== userId) {
+    await ctx.answerCallbackQuery("This action belongs to another user");
+    return;
+  }
+
+  await ctx.answerCallbackQuery();
 
   // Show processing message
   await ctx.editMessageText("⏳ Creating...");
@@ -77,7 +84,7 @@ export async function handleConfirm(ctx: Context): Promise<void> {
       await ctx.editMessageText(successMsg, { parse_mode: "Markdown" });
 
       // Reset session
-      await resetSession(chatId);
+      await resetSession(chatId, userId);
     } else {
       await ctx.editMessageText(`❌ Failed: ${result.error}`);
     }
@@ -95,11 +102,13 @@ export async function handleConfirm(ctx: Context): Promise<void> {
  */
 export async function handleCancel(ctx: Context): Promise<void> {
   const chatId = ctx.chat?.id;
-  if (!chatId) return;
+  const userId = ctx.from?.id;
+  if (!chatId || !userId) return;
 
+  // Users can cancel their own sessions (no validation needed - cancel is safe for anyone)
   await ctx.answerCallbackQuery();
   await ctx.editMessageText("❌ Operation cancelled.");
-  await resetSession(chatId);
+  await resetSession(chatId, userId);
 }
 
 /**
@@ -108,15 +117,22 @@ export async function handleCancel(ctx: Context): Promise<void> {
  */
 export async function handleSkip(ctx: Context): Promise<void> {
   const chatId = ctx.chat?.id;
-  if (!chatId) return;
+  const userId = ctx.from?.id;
+  if (!chatId || !userId) return;
 
-  await ctx.answerCallbackQuery();
-
-  const session = await getSession(chatId);
+  const session = await getSession(chatId, userId);
   if (!session || !session.currentAction) {
-    await ctx.editMessageText("❌ Session expired. Please start over.");
+    await ctx.answerCallbackQuery("Session expired. Please start over.");
     return;
   }
+
+  // Validate that the user clicking the button is the one who initiated the action
+  if (session.initiatingUserId && session.initiatingUserId !== userId) {
+    await ctx.answerCallbackQuery("This action belongs to another user");
+    return;
+  }
+
+  await ctx.answerCallbackQuery();
 
   // Just confirm with current values
   const { buildConfirmationKeyboard, formatSuggestedAction } =
@@ -127,7 +143,7 @@ export async function handleSkip(ctx: Context): Promise<void> {
 
   await ctx.editMessageText(suggestionText, { reply_markup: keyboard });
 
-  await updateSession(chatId, {
+  await updateSession(chatId, userId, {
     state: {
       type: "awaiting_confirmation",
       action: session.currentAction,

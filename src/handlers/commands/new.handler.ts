@@ -11,6 +11,9 @@ import type { CallerInfo } from "@/src/lib/types/session.types";
  */
 export async function handleNew(ctx: CommandContext<Context>): Promise<void> {
   const chatId = ctx.chat.id;
+  const userId = ctx.from?.id;
+  if (!userId) return;
+
   const instruction = ctx.match?.toString().trim() || "";
 
   if (!instruction) {
@@ -27,6 +30,7 @@ export async function handleNew(ctx: CommandContext<Context>): Promise<void> {
 
   // Get caller info for "me" resolution
   const callerInfo: CallerInfo = {
+    userId,
     firstName: ctx.from?.first_name,
     lastName: ctx.from?.last_name,
     username: ctx.from?.username,
@@ -37,7 +41,7 @@ export async function handleNew(ctx: CommandContext<Context>): Promise<void> {
 
   try {
     // Get or create session
-    const session = await getOrCreateSession(chatId);
+    const session = await getOrCreateSession(chatId, userId);
 
     // Fetch schema if needed
     let schema = session.schema;
@@ -86,7 +90,7 @@ export async function handleNew(ctx: CommandContext<Context>): Promise<void> {
     });
 
     // Update session with suggested action (clear any old queue)
-    await updateSession(chatId, {
+    await updateSession(chatId, userId, {
       state: {
         type: "awaiting_confirmation",
         action: suggestedAction,
@@ -95,6 +99,7 @@ export async function handleNew(ctx: CommandContext<Context>): Promise<void> {
       currentAction: suggestedAction,
       currentInstruction: instruction,
       callerInfo,
+      initiatingUserId: userId,
       schema,
       lastBotMessageId: processingMsg.message_id,
     });

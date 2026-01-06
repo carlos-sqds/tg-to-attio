@@ -4,8 +4,9 @@ import type { PendingInstruction, CallerInfo } from "@/src/lib/types/session.typ
 /**
  * KV key for pending instruction.
  * Prefixed with "attio:" to avoid collision.
+ * Keys are scoped by both chatId and userId to isolate each user's pending instructions in group chats.
  */
-const PENDING_KEY = (chatId: number) => `attio:pending:${chatId}`;
+const PENDING_KEY = (chatId: number, userId: number) => `attio:pending:${chatId}:${userId}`;
 
 /**
  * Pending instruction TTL in seconds.
@@ -17,8 +18,11 @@ const PENDING_TTL_SECONDS = 2;
  * Get pending instruction from KV.
  * Returns null if no pending instruction or expired.
  */
-export async function getPending(chatId: number): Promise<PendingInstruction | null> {
-  return kv.get<PendingInstruction>(PENDING_KEY(chatId));
+export async function getPending(
+  chatId: number,
+  userId: number
+): Promise<PendingInstruction | null> {
+  return kv.get<PendingInstruction>(PENDING_KEY(chatId, userId));
 }
 
 /**
@@ -27,6 +31,7 @@ export async function getPending(chatId: number): Promise<PendingInstruction | n
  */
 export async function setPending(
   chatId: number,
+  userId: number,
   text: string,
   messageId: number,
   callerInfo: CallerInfo
@@ -37,21 +42,21 @@ export async function setPending(
     callerInfo,
     createdAt: new Date().toISOString(),
   };
-  await kv.set(PENDING_KEY(chatId), pending, { ex: PENDING_TTL_SECONDS });
+  await kv.set(PENDING_KEY(chatId, userId), pending, { ex: PENDING_TTL_SECONDS });
 }
 
 /**
  * Clear pending instruction from KV.
  * Call after correlating with forwarded message.
  */
-export async function clearPending(chatId: number): Promise<void> {
-  await kv.del(PENDING_KEY(chatId));
+export async function clearPending(chatId: number, userId: number): Promise<void> {
+  await kv.del(PENDING_KEY(chatId, userId));
 }
 
 /**
- * Check if there's a pending instruction for this chat.
+ * Check if there's a pending instruction for this chat and user.
  */
-export async function hasPending(chatId: number): Promise<boolean> {
-  const pending = await getPending(chatId);
+export async function hasPending(chatId: number, userId: number): Promise<boolean> {
+  const pending = await getPending(chatId, userId);
   return pending !== null;
 }

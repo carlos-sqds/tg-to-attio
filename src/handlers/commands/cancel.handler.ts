@@ -7,9 +7,11 @@ import { resetSession } from "@/src/lib/kv/session.kv";
  */
 export async function handleCancel(ctx: CommandContext<Context>): Promise<void> {
   const chatId = ctx.chat.id;
+  const userId = ctx.from?.id;
+  if (!userId) return;
 
   // Reset session to idle
-  await resetSession(chatId);
+  await resetSession(chatId, userId);
 
   await ctx.reply("❌ Operation cancelled. Send /start to begin again.");
 }

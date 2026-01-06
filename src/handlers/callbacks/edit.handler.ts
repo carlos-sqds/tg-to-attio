@@ -8,15 +8,22 @@ import { buildEditFieldKeyboard } from "@/src/lib/telegram/keyboards";
  */
 export async function handleEdit(ctx: Context): Promise<void> {
   const chatId = ctx.chat?.id;
-  if (!chatId) return;
+  const userId = ctx.from?.id;
+  if (!chatId || !userId) return;
 
-  await ctx.answerCallbackQuery();
-
-  const session = await getSession(chatId);
+  const session = await getSession(chatId, userId);
   if (!session || !session.currentAction) {
-    await ctx.editMessageText("❌ Session expired. Please start over.");
+    await ctx.answerCallbackQuery("Session expired. Please start over.");
     return;
   }
+
+  // Validate that the user clicking the button is the one who initiated the action
+  if (session.initiatingUserId && session.initiatingUserId !== userId) {
+    await ctx.answerCallbackQuery("This action belongs to another user");
+    return;
+  }
+
+  await ctx.answerCallbackQuery();
 
   // Get editable fields from extracted data
   const editableFields = Object.keys(session.currentAction.extractedData).filter(
@@ -41,15 +48,22 @@ export async function handleEdit(ctx: Context): Promise<void> {
  */
 export async function handleEditField(ctx: Context, field: string): Promise<void> {
   const chatId = ctx.chat?.id;
-  if (!chatId) return;
+  const userId = ctx.from?.id;
+  if (!chatId || !userId) return;
 
-  await ctx.answerCallbackQuery();
-
-  const session = await getSession(chatId);
+  const session = await getSession(chatId, userId);
   if (!session || !session.currentAction) {
-    await ctx.editMessageText("❌ Session expired. Please start over.");
+    await ctx.answerCallbackQuery("Session expired. Please start over.");
     return;
   }
+
+  // Validate that the user clicking the button is the one who initiated the action
+  if (session.initiatingUserId && session.initiatingUserId !== userId) {
+    await ctx.answerCallbackQuery("This action belongs to another user");
+    return;
+  }
+
+  await ctx.answerCallbackQuery();
 
   const currentValue = session.currentAction.extractedData[field];
   const displayValue =
@@ -61,7 +75,7 @@ export async function handleEditField(ctx: Context, field: string): Promise<void
       `Please type the new value:`
   );
 
-  await updateSession(chatId, {
+  await updateSession(chatId, userId, {
     state: {
       type: "awaiting_edit",
       field,

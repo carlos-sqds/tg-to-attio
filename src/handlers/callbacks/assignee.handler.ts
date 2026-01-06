@@ -12,15 +12,22 @@ import {
  */
 export async function handleAssigneeSelect(ctx: Context, memberId: string): Promise<void> {
   const chatId = ctx.chat?.id;
-  if (!chatId) return;
+  const userId = ctx.from?.id;
+  if (!chatId || !userId) return;
 
-  await ctx.answerCallbackQuery();
-
-  const session = await getSession(chatId);
+  const session = await getSession(chatId, userId);
   if (!session || !session.currentAction || !session.schema) {
-    await ctx.editMessageText("❌ Session expired. Please start over.");
+    await ctx.answerCallbackQuery("Session expired. Please start over.");
     return;
   }
+
+  // Validate that the user clicking the button is the one who initiated the action
+  if (session.initiatingUserId && session.initiatingUserId !== userId) {
+    await ctx.answerCallbackQuery("This action belongs to another user");
+    return;
+  }
+
+  await ctx.answerCallbackQuery();
 
   // Find the member
   const member = session.schema.workspaceMembers.find((m) => m.id === memberId);
@@ -44,7 +51,7 @@ export async function handleAssigneeSelect(ctx: Context, memberId: string): Prom
 
   await ctx.editMessageText(suggestionText, { reply_markup: keyboard });
 
-  await updateSession(chatId, {
+  await updateSession(chatId, userId, {
     state: {
       type: "awaiting_confirmation",
       action: updatedAction,
@@ -61,15 +68,22 @@ export async function handleAssigneePagination(
   direction: "prev" | "next"
 ): Promise<void> {
   const chatId = ctx.chat?.id;
-  if (!chatId) return;
+  const userId = ctx.from?.id;
+  if (!chatId || !userId) return;
 
-  await ctx.answerCallbackQuery();
-
-  const session = await getSession(chatId);
+  const session = await getSession(chatId, userId);
   if (!session?.state || session.state.type !== "awaiting_assignee" || !session.schema) {
-    await ctx.editMessageText("❌ Session expired. Please start over.");
+    await ctx.answerCallbackQuery("Session expired. Please start over.");
     return;
   }
+
+  // Validate that the user clicking the button is the one who initiated the action
+  if (session.initiatingUserId && session.initiatingUserId !== userId) {
+    await ctx.answerCallbackQuery("This action belongs to another user");
+    return;
+  }
+
+  await ctx.answerCallbackQuery();
 
   const { page, members } = session.state;
   const newPage = direction === "prev" ? page - 1 : page + 1;
@@ -78,7 +92,7 @@ export async function handleAssigneePagination(
 
   await ctx.editMessageText("👤 Select an assignee:", { reply_markup: keyboard });
 
-  await updateSession(chatId, {
+  await updateSession(chatId, userId, {
     state: {
       type: "awaiting_assignee",
       page: newPage,
@@ -92,13 +106,22 @@ export async function handleAssigneePagination(
  */
 export async function handleAssigneeManual(ctx: Context): Promise<void> {
   const chatId = ctx.chat?.id;
-  if (!chatId) return;
+  const userId = ctx.from?.id;
+  if (!chatId || !userId) return;
+
+  const session = await getSession(chatId, userId);
+
+  // Validate that the user clicking the button is the one who initiated the action
+  if (session?.initiatingUserId && session.initiatingUserId !== userId) {
+    await ctx.answerCallbackQuery("This action belongs to another user");
+    return;
+  }
 
   await ctx.answerCallbackQuery();
 
   await ctx.editMessageText("✏️ Please type the assignee's name:");
 
-  await updateSession(chatId, {
+  await updateSession(chatId, userId, {
     state: { type: "awaiting_assignee_input" },
   });
 }
@@ -108,15 +131,22 @@ export async function handleAssigneeManual(ctx: Context): Promise<void> {
  */
 export async function handleAssigneeSkip(ctx: Context): Promise<void> {
   const chatId = ctx.chat?.id;
-  if (!chatId) return;
+  const userId = ctx.from?.id;
+  if (!chatId || !userId) return;
 
-  await ctx.answerCallbackQuery();
-
-  const session = await getSession(chatId);
+  const session = await getSession(chatId, userId);
   if (!session || !session.currentAction) {
-    await ctx.editMessageText("❌ Session expired. Please start over.");
+    await ctx.answerCallbackQuery("Session expired. Please start over.");
     return;
   }
+
+  // Validate that the user clicking the button is the one who initiated the action
+  if (session.initiatingUserId && session.initiatingUserId !== userId) {
+    await ctx.answerCallbackQuery("This action belongs to another user");
+    return;
+  }
+
+  await ctx.answerCallbackQuery();
 
   // Remove assignee from action
   const updatedAction = {
@@ -133,7 +163,7 @@ export async function handleAssigneeSkip(ctx: Context): Promise<void> {
 
   await ctx.editMessageText(suggestionText, { reply_markup: keyboard });
 
-  await updateSession(chatId, {
+  await updateSession(chatId, userId, {
     state: {
       type: "awaiting_confirmation",
       action: updatedAction,
@@ -148,22 +178,29 @@ export async function handleAssigneeSkip(ctx: Context): Promise<void> {
  */
 export async function showAssigneeSelection(ctx: Context): Promise<void> {
   const chatId = ctx.chat?.id;
-  if (!chatId) return;
+  const userId = ctx.from?.id;
+  if (!chatId || !userId) return;
 
-  await ctx.answerCallbackQuery();
-
-  const session = await getSession(chatId);
+  const session = await getSession(chatId, userId);
   if (!session || !session.schema) {
-    await ctx.editMessageText("❌ Session expired. Please start over.");
+    await ctx.answerCallbackQuery("Session expired. Please start over.");
     return;
   }
+
+  // Validate that the user clicking the button is the one who initiated the action
+  if (session.initiatingUserId && session.initiatingUserId !== userId) {
+    await ctx.answerCallbackQuery("This action belongs to another user");
+    return;
+  }
+
+  await ctx.answerCallbackQuery();
 
   const members = session.schema.workspaceMembers;
   const keyboard = buildAssigneeKeyboard(members, 0);
 
   await ctx.editMessageText("👤 Select an assignee:", { reply_markup: keyboard });
 
-  await updateSession(chatId, {
+  await updateSession(chatId, userId, {
     state: {
       type: "awaiting_assignee",
       page: 0,

@@ -12,7 +12,16 @@ import {
  */
 export async function showNoteParentTypeSelection(ctx: Context): Promise<void> {
   const chatId = ctx.chat?.id;
-  if (!chatId) return;
+  const userId = ctx.from?.id;
+  if (!chatId || !userId) return;
+
+  const session = await getSession(chatId, userId);
+
+  // Validate that the user clicking the button is the one who initiated the action
+  if (session?.initiatingUserId && session.initiatingUserId !== userId) {
+    await ctx.answerCallbackQuery("This action belongs to another user");
+    return;
+  }
 
   await ctx.answerCallbackQuery();
 
@@ -22,7 +31,7 @@ export async function showNoteParentTypeSelection(ctx: Context): Promise<void> {
     reply_markup: keyboard,
   });
 
-  await updateSession(chatId, {
+  await updateSession(chatId, userId, {
     state: { type: "awaiting_note_parent_type" },
   });
 }
@@ -35,7 +44,16 @@ export async function handleNoteParentType(
   parentType: "companies" | "people" | "deals"
 ): Promise<void> {
   const chatId = ctx.chat?.id;
-  if (!chatId) return;
+  const userId = ctx.from?.id;
+  if (!chatId || !userId) return;
+
+  const session = await getSession(chatId, userId);
+
+  // Validate that the user clicking the button is the one who initiated the action
+  if (session?.initiatingUserId && session.initiatingUserId !== userId) {
+    await ctx.answerCallbackQuery("This action belongs to another user");
+    return;
+  }
 
   await ctx.answerCallbackQuery();
 
@@ -47,7 +65,7 @@ export async function handleNoteParentType(
 
   await ctx.editMessageText(`🔍 Search for a ${typeLabels[parentType]}:`);
 
-  await updateSession(chatId, {
+  await updateSession(chatId, userId, {
     state: {
       type: "awaiting_note_parent_search",
       parentType,
@@ -60,15 +78,22 @@ export async function handleNoteParentType(
  */
 export async function handleNoteParentSelect(ctx: Context, recordId: string): Promise<void> {
   const chatId = ctx.chat?.id;
-  if (!chatId) return;
+  const userId = ctx.from?.id;
+  if (!chatId || !userId) return;
 
-  await ctx.answerCallbackQuery();
-
-  const session = await getSession(chatId);
+  const session = await getSession(chatId, userId);
   if (!session || !session.currentAction) {
-    await ctx.editMessageText("❌ Session expired. Please start over.");
+    await ctx.answerCallbackQuery("Session expired. Please start over.");
     return;
   }
+
+  // Validate that the user clicking the button is the one who initiated the action
+  if (session.initiatingUserId && session.initiatingUserId !== userId) {
+    await ctx.answerCallbackQuery("This action belongs to another user");
+    return;
+  }
+
+  await ctx.answerCallbackQuery();
 
   // Get the parent type from state
   let parentType: "companies" | "people" | "deals" = "companies";
@@ -94,7 +119,7 @@ export async function handleNoteParentSelect(ctx: Context, recordId: string): Pr
 
   await ctx.editMessageText(suggestionText, { reply_markup: keyboard });
 
-  await updateSession(chatId, {
+  await updateSession(chatId, userId, {
     state: {
       type: "awaiting_confirmation",
       action: updatedAction,
@@ -108,7 +133,16 @@ export async function handleNoteParentSelect(ctx: Context, recordId: string): Pr
  */
 export async function handleNoteParentSearchAgain(ctx: Context): Promise<void> {
   const chatId = ctx.chat?.id;
-  if (!chatId) return;
+  const userId = ctx.from?.id;
+  if (!chatId || !userId) return;
+
+  const session = await getSession(chatId, userId);
+
+  // Validate that the user clicking the button is the one who initiated the action
+  if (session?.initiatingUserId && session.initiatingUserId !== userId) {
+    await ctx.answerCallbackQuery("This action belongs to another user");
+    return;
+  }
 
   await ctx.answerCallbackQuery();
 
@@ -119,7 +153,7 @@ export async function handleNoteParentSearchAgain(ctx: Context): Promise<void> {
     reply_markup: keyboard,
   });
 
-  await updateSession(chatId, {
+  await updateSession(chatId, userId, {
     state: { type: "awaiting_note_parent_type" },
   });
 }

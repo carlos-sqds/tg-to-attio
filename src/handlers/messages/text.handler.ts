@@ -15,21 +15,23 @@ import type { CallerInfo } from "@/src/lib/types/session.types";
  */
 export async function handleText(ctx: Context): Promise<void> {
   const chatId = ctx.chat?.id;
+  const userId = ctx.from?.id;
   const text = ctx.message?.text;
-  if (!chatId || !text) return;
+  if (!chatId || !userId || !text) return;
 
   // Get session
-  const session = await getSession(chatId);
+  const session = await getSession(chatId, userId);
   if (!session) {
     // No session, might be instruction before forward
     const callerInfo: CallerInfo = {
+      userId,
       firstName: ctx.from?.first_name,
       lastName: ctx.from?.last_name,
       username: ctx.from?.username,
     };
 
     // Store as pending instruction
-    await setPending(chatId, text, ctx.message.message_id, callerInfo);
+    await setPending(chatId, userId, text, ctx.message.message_id, callerInfo);
 
     await ctx.reply(
       "💡 Got your instruction. Now forward a message within 2 seconds, " +
@@ -45,12 +47,13 @@ export async function handleText(ctx: Context): Promise<void> {
     case "gathering_messages": {
       // Might be instruction before forward
       const callerInfo: CallerInfo = {
+        userId,
         firstName: ctx.from?.first_name,
         lastName: ctx.from?.last_name,
         username: ctx.from?.username,
       };
 
-      await setPending(chatId, text, ctx.message.message_id, callerInfo);
+      await setPending(chatId, userId, text, ctx.message.message_id, callerInfo);
 
       if (session.messageQueue.length > 0) {
         await ctx.reply(
@@ -95,7 +98,7 @@ export async function handleText(ctx: Context): Promise<void> {
           const keyboard = buildClarificationKeyboard(nextQuestion.options);
           await ctx.reply(`❓ ${nextQuestion.question}`, { reply_markup: keyboard });
 
-          await updateSession(chatId, {
+          await updateSession(chatId, userId, {
             state: {
               type: "awaiting_clarification",
               index: nextIndex,
@@ -110,7 +113,7 @@ export async function handleText(ctx: Context): Promise<void> {
 
           await ctx.reply(suggestionText, { reply_markup: keyboard });
 
-          await updateSession(chatId, {
+          await updateSession(chatId, userId, {
             state: {
               type: "awaiting_confirmation",
               action: updatedAction,
@@ -151,7 +154,7 @@ export async function handleText(ctx: Context): Promise<void> {
 
       await ctx.reply(suggestionText, { reply_markup: keyboard });
 
-      await updateSession(chatId, {
+      await updateSession(chatId, userId, {
         state: {
           type: "awaiting_confirmation",
           action: updatedAction,
@@ -194,7 +197,7 @@ export async function handleText(ctx: Context): Promise<void> {
           reply_markup: keyboard,
         });
 
-        await updateSession(chatId, {
+        await updateSession(chatId, userId, {
           state: {
             type: "awaiting_confirmation",
             action: updatedAction,
@@ -224,7 +227,7 @@ export async function handleText(ctx: Context): Promise<void> {
         const keyboard = buildNoteParentSearchResultsKeyboard(results);
         await ctx.reply(`Found ${results.length} result(s):`, { reply_markup: keyboard });
 
-        await updateSession(chatId, {
+        await updateSession(chatId, userId, {
           state: {
             type: "awaiting_note_parent_selection",
             results,

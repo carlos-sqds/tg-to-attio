@@ -7,7 +7,10 @@ import { getSession, updateSession } from "@/src/lib/kv/session.kv";
  */
 export async function handleClear(ctx: CommandContext<Context>): Promise<void> {
   const chatId = ctx.chat.id;
-  const session = await getSession(chatId);
+  const userId = ctx.from?.id;
+  if (!userId) return;
+
+  const session = await getSession(chatId, userId);
 
   if (!session || session.messageQueue.length === 0) {
     await ctx.reply("📭 No messages in queue.");
@@ -17,11 +20,12 @@ export async function handleClear(ctx: CommandContext<Context>): Promise<void> {
   const count = session.messageQueue.length;
 
   // Clear the queue
-  await updateSession(chatId, {
+  await updateSession(chatId, userId, {
     messageQueue: [],
     state: { type: "idle" },
     currentAction: null,
     currentInstruction: null,
+    initiatingUserId: null,
   });
 
   await ctx.reply(`🗑️ Cleared ${count} message${count === 1 ? "" : "s"} from queue.`);

@@ -69,7 +69,9 @@ export async function searchCompanies(query: string): Promise<CompanySearchResul
     const response = await attioRequest<{
       data: Array<{
         id: { record_id: string };
-        primary_attribute?: { value?: string };
+        object_slug: string;
+        record_text: string;
+        domains?: string[];
       }>;
     }>("/objects/records/search", apiKey, {
       method: "POST",
@@ -78,14 +80,10 @@ export async function searchCompanies(query: string): Promise<CompanySearchResul
 
     console.log("[ATTIO] Response received, company count:", response.data?.length || 0);
 
-    const results: CompanySearchResult[] = response.data.map((company) => {
-      const name = company.primary_attribute?.value || "Unnamed Company";
-
-      return {
-        id: company.id.record_id,
-        name,
-      };
-    });
+    const results: CompanySearchResult[] = response.data.map((company) => ({
+      id: company.id.record_id,
+      name: company.record_text || "Unnamed Company",
+    }));
 
     console.log("[ATTIO] Returning results:", results.length);
     return results;

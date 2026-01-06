@@ -364,13 +364,14 @@ describe("Attio Actions", () => {
             data: [
               {
                 id: { record_id: "company-1" },
-                object: { api_slug: "companies" },
-                primary_attribute: { value: "Acme Corp" },
+                object_slug: "companies",
+                record_text: "Acme Corp",
+                domains: ["acme.com"],
               },
               {
                 id: { record_id: "company-2" },
-                object: { api_slug: "companies" },
-                primary_attribute: { full_name: "Acme Inc" },
+                object_slug: "companies",
+                record_text: "Acme Inc",
               },
             ],
           }),
@@ -381,10 +382,11 @@ describe("Attio Actions", () => {
       expect(results).toHaveLength(2);
       expect(results[0].id).toBe("company-1");
       expect(results[0].name).toBe("Acme Corp");
+      expect(results[0].extra).toBe("acme.com");
       expect(results[1].name).toBe("Acme Inc");
     });
 
-    it("handles records with missing primary_attribute", async () => {
+    it("handles records with missing record_text", async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: () =>
@@ -392,7 +394,8 @@ describe("Attio Actions", () => {
             data: [
               {
                 id: { record_id: "company-1" },
-                object: { api_slug: "companies" },
+                object_slug: "companies",
+                record_text: "",
               },
             ],
           }),
@@ -431,8 +434,8 @@ describe("Attio Actions", () => {
             data: [
               {
                 id: { record_id: "person-1" },
-                object: { api_slug: "people" },
-                primary_attribute: { full_name: "John Doe" },
+                object_slug: "people",
+                record_text: "John Doe",
               },
             ],
           }),
@@ -652,8 +655,8 @@ describe("Attio Actions", () => {
             data: [
               {
                 id: { record_id: "company-1" },
-                object: { api_slug: "companies" },
-                primary_attribute: { value: "Acme Corp" },
+                object_slug: "companies",
+                record_text: "Acme Corp",
               },
             ],
           }),
@@ -696,8 +699,8 @@ describe("Attio Actions", () => {
             data: [
               {
                 id: { record_id: "company-1" },
-                object: { api_slug: "companies" },
-                primary_attribute: { value: "Acme Corp" },
+                object_slug: "companies",
+                record_text: "Acme Corp",
               },
             ],
           }),

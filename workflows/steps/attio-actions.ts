@@ -599,8 +599,9 @@ export async function searchRecords(objectSlug: string, query: string): Promise<
   const response = await attioRequest<{
     data: Array<{
       id: { record_id: string };
-      object: { api_slug: string };
-      primary_attribute?: { value?: string; full_name?: string };
+      object_slug: string;
+      record_text: string;
+      domains?: string[];
     }>;
   }>("/objects/records/search", apiKey, {
     method: "POST",
@@ -612,15 +613,11 @@ export async function searchRecords(objectSlug: string, query: string): Promise<
     }),
   });
 
-  return response.data.map((record) => {
-    const name =
-      record.primary_attribute?.full_name || record.primary_attribute?.value || "Unknown";
-
-    return {
-      id: record.id.record_id,
-      name,
-    };
-  });
+  return response.data.map((record) => ({
+    id: record.id.record_id,
+    name: record.record_text || "Unknown",
+    extra: record.domains?.[0],
+  }));
 }
 
 // ============ COMPOSITE OPERATIONS ============

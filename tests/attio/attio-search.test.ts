@@ -44,11 +44,14 @@ describe("Attio Search (Conversation Workflow)", () => {
             data: [
               {
                 id: { record_id: "company-1" },
-                primary_attribute: { value: "Acme Corp" },
+                object_slug: "companies",
+                record_text: "Acme Corp",
+                domains: ["acme.com"],
               },
               {
                 id: { record_id: "company-2" },
-                primary_attribute: { value: "Acme Inc" },
+                object_slug: "companies",
+                record_text: "Acme Inc",
               },
             ],
           }),
@@ -63,7 +66,7 @@ describe("Attio Search (Conversation Workflow)", () => {
       expect(results[1].name).toBe("Acme Inc");
     });
 
-    it("handles companies with missing primary_attribute", async () => {
+    it("handles companies with missing record_text", async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: () =>
@@ -71,6 +74,8 @@ describe("Attio Search (Conversation Workflow)", () => {
             data: [
               {
                 id: { record_id: "company-1" },
+                object_slug: "companies",
+                record_text: "",
               },
             ],
           }),

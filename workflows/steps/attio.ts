@@ -1,10 +1,4 @@
-import type {
-  AttioCompany,
-  AttioNote,
-  CreateNoteInput,
-  SearchCompaniesInput,
-  CompanySearchResult,
-} from "@/src/services/attio/types";
+import type { AttioNote, CreateNoteInput, CompanySearchResult } from "@/src/services/attio/types";
 
 const ATTIO_BASE_URL = "https://api.attio.com/v2";
 
@@ -61,45 +55,35 @@ export async function searchCompanies(query: string): Promise<CompanySearchResul
     throw new Error("ATTIO_API_KEY not configured");
   }
 
-  const searchInput: SearchCompaniesInput = {
-    filter: {
-      name: {
-        $contains: query,
-      },
-    },
+  // Use the dedicated search endpoint for fuzzy matching
+  const searchInput = {
+    query,
+    objects: ["companies"],
+    request_as: { type: "workspace" },
     limit: 10,
   };
 
   console.log("[ATTIO] Search input:", JSON.stringify(searchInput));
 
   try {
-    const response = await attioRequest<{ data: AttioCompany[] }>(
-      "/objects/companies/records/query",
-      apiKey,
-      {
-        method: "POST",
-        body: JSON.stringify(searchInput),
-      }
-    );
+    const response = await attioRequest<{
+      data: Array<{
+        id: { record_id: string };
+        primary_attribute?: { value?: string };
+      }>;
+    }>("/objects/records/search", apiKey, {
+      method: "POST",
+      body: JSON.stringify(searchInput),
+    });
 
     console.log("[ATTIO] Response received, company count:", response.data?.length || 0);
 
     const results: CompanySearchResult[] = response.data.map((company) => {
-      const name = company.values.name?.[0]?.value || "Unnamed Company";
-
-      let location: string | undefined;
-      const locationData = company.values.locations?.[0];
-      if (locationData) {
-        const parts = [locationData.locality, locationData.region, locationData.country].filter(
-          Boolean
-        );
-        location = parts.length > 0 ? parts.join(", ") : undefined;
-      }
+      const name = company.primary_attribute?.value || "Unnamed Company";
 
       return {
         id: company.id.record_id,
         name,
-        location,
       };
     });
 

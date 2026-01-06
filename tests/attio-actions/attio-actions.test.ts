@@ -223,10 +223,10 @@ describe("Attio Actions", () => {
       expect(dealBody.data.values.associated_company.target_record_id).toBe("found-company");
     });
 
-    it("uses correct filter structure when searching for company (no value wrapper)", async () => {
+    it("uses search endpoint when searching for company", async () => {
       // First call: fetch deal stages
       mockDealStagesResponse();
-      // Second call: company search
+      // Second call: company search using search endpoint
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: () => Promise.resolve({ data: [] }),
@@ -240,12 +240,11 @@ describe("Attio Actions", () => {
       await createDeal({ name: "Deal", companyName: "TechCorp" });
 
       // Second call (index 1) is the company search
-      const searchBody = JSON.parse(mockFetch.mock.calls[1][1].body);
-      expect(searchBody.filter).toEqual({
-        name: { $contains: "TechCorp" },
-      });
-      // Make sure there's no extra "value" wrapper
-      expect(searchBody.filter.name.value).toBeUndefined();
+      const [url, options] = mockFetch.mock.calls[1];
+      expect(url).toContain("/objects/records/search");
+      const searchBody = JSON.parse(options.body);
+      expect(searchBody.query).toBe("TechCorp");
+      expect(searchBody.objects).toEqual(["companies"]);
     });
   });
 
@@ -357,7 +356,7 @@ describe("Attio Actions", () => {
   });
 
   describe("searchRecords", () => {
-    it("searches for companies by name", async () => {
+    it("searches for companies by name using search endpoint", async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: () =>
@@ -365,16 +364,13 @@ describe("Attio Actions", () => {
             data: [
               {
                 id: { record_id: "company-1" },
-                values: {
-                  name: [{ value: "Acme Corp" }],
-                  domains: [{ domain: "acme.com" }],
-                },
+                object: { api_slug: "companies" },
+                primary_attribute: { value: "Acme Corp" },
               },
               {
                 id: { record_id: "company-2" },
-                values: {
-                  name: [{ full_name: "Acme Inc" }],
-                },
+                object: { api_slug: "companies" },
+                primary_attribute: { full_name: "Acme Inc" },
               },
             ],
           }),
@@ -385,11 +381,10 @@ describe("Attio Actions", () => {
       expect(results).toHaveLength(2);
       expect(results[0].id).toBe("company-1");
       expect(results[0].name).toBe("Acme Corp");
-      expect(results[0].extra).toBe("acme.com");
       expect(results[1].name).toBe("Acme Inc");
     });
 
-    it("handles records with missing name", async () => {
+    it("handles records with missing primary_attribute", async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: () =>
@@ -397,7 +392,7 @@ describe("Attio Actions", () => {
             data: [
               {
                 id: { record_id: "company-1" },
-                values: {},
+                object: { api_slug: "companies" },
               },
             ],
           }),
@@ -408,7 +403,7 @@ describe("Attio Actions", () => {
       expect(results[0].name).toBe("Unknown");
     });
 
-    it("sends correct filter structure without extra value wrapper", async () => {
+    it("uses the search endpoint with correct request body", async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: () => Promise.resolve({ data: [] }),
@@ -416,28 +411,40 @@ describe("Attio Actions", () => {
 
       await searchRecords("companies", "TechCorp");
 
-      const callBody = JSON.parse(mockFetch.mock.calls[0][1].body);
+      const [url, options] = mockFetch.mock.calls[0];
+      expect(url).toContain("/objects/records/search");
 
-      // Filter should be { name: { $contains: "TechCorp" } }
-      // NOT { name: { value: { $contains: "TechCorp" } } }
-      expect(callBody.filter).toEqual({
-        name: { $contains: "TechCorp" },
+      const callBody = JSON.parse(options.body);
+      expect(callBody).toEqual({
+        query: "TechCorp",
+        objects: ["companies"],
+        request_as: { type: "workspace" },
+        limit: 10,
       });
-      expect(callBody.filter.name.value).toBeUndefined();
     });
 
-    it("performs case-insensitive search (filter uses $contains)", async () => {
+    it("searchRecords works for different object types", async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
-        json: () => Promise.resolve({ data: [] }),
+        json: () =>
+          Promise.resolve({
+            data: [
+              {
+                id: { record_id: "person-1" },
+                object: { api_slug: "people" },
+                primary_attribute: { full_name: "John Doe" },
+              },
+            ],
+          }),
       });
 
-      await searchRecords("companies", "techcorp");
+      const results = await searchRecords("people", "John");
+
+      expect(results).toHaveLength(1);
+      expect(results[0].name).toBe("John Doe");
 
       const callBody = JSON.parse(mockFetch.mock.calls[0][1].body);
-
-      // $contains operator is case-insensitive in Attio API
-      expect(callBody.filter.name.$contains).toBe("techcorp");
+      expect(callBody.objects).toEqual(["people"]);
     });
   });
 
@@ -601,8 +608,8 @@ describe("Attio Actions", () => {
       expect(result.recordId).toBe("task-123");
     });
 
-    it("uses correct filter structure for company search in create_deal (no value wrapper)", async () => {
-      // Search for company
+    it("uses search endpoint for company lookup in create_deal", async () => {
+      // Search for company using search endpoint
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: () => Promise.resolve({ data: [] }),
@@ -628,16 +635,16 @@ describe("Attio Actions", () => {
         "Content"
       );
 
-      // First call should be the company search
-      const searchBody = JSON.parse(mockFetch.mock.calls[0][1].body);
-      expect(searchBody.filter).toEqual({
-        name: { $contains: "TechCorp" },
-      });
-      expect(searchBody.filter.name.value).toBeUndefined();
+      // First call should be the company search using search endpoint
+      const [url, options] = mockFetch.mock.calls[0];
+      expect(url).toContain("/objects/records/search");
+      const searchBody = JSON.parse(options.body);
+      expect(searchBody.query).toBe("TechCorp");
+      expect(searchBody.objects).toEqual(["companies"]);
     });
 
-    it("uses correct filter structure for company search in create_person (no value wrapper)", async () => {
-      // Search for company
+    it("uses search endpoint for company lookup in create_person", async () => {
+      // Search for company using search endpoint
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: () =>
@@ -645,7 +652,8 @@ describe("Attio Actions", () => {
             data: [
               {
                 id: { record_id: "company-1" },
-                values: { name: [{ value: "Acme Corp" }] },
+                object: { api_slug: "companies" },
+                primary_attribute: { value: "Acme Corp" },
               },
             ],
           }),
@@ -671,16 +679,16 @@ describe("Attio Actions", () => {
         "Content"
       );
 
-      // First call should be the company search
-      const searchBody = JSON.parse(mockFetch.mock.calls[0][1].body);
-      expect(searchBody.filter).toEqual({
-        name: { $contains: "Acme" },
-      });
-      expect(searchBody.filter.name.value).toBeUndefined();
+      // First call should be the company search using search endpoint
+      const [url, options] = mockFetch.mock.calls[0];
+      expect(url).toContain("/objects/records/search");
+      const searchBody = JSON.parse(options.body);
+      expect(searchBody.query).toBe("Acme");
+      expect(searchBody.objects).toEqual(["companies"]);
     });
 
-    it("uses correct filter structure for company search in add_note (no value wrapper)", async () => {
-      // Search for company
+    it("uses search endpoint for company lookup in add_note", async () => {
+      // Search for company using search endpoint
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: () =>
@@ -688,7 +696,8 @@ describe("Attio Actions", () => {
             data: [
               {
                 id: { record_id: "company-1" },
-                values: { name: [{ value: "Acme Corp" }] },
+                object: { api_slug: "companies" },
+                primary_attribute: { value: "Acme Corp" },
               },
             ],
           }),
@@ -708,52 +717,12 @@ describe("Attio Actions", () => {
         "Note content"
       );
 
-      // First call should be the company search
-      const searchBody = JSON.parse(mockFetch.mock.calls[0][1].body);
-      expect(searchBody.filter).toEqual({
-        name: { $contains: "Acme" },
-      });
-      expect(searchBody.filter.name.value).toBeUndefined();
-    });
-  });
-
-  describe("Attio API Filter Structure Validation", () => {
-    it("all company searches use $contains without value wrapper", async () => {
-      // This test documents the expected filter structure for Attio API
-      // Filter structure per Attio docs: { name: { $contains: "query" } }
-      // NOT: { name: { value: { $contains: "query" } } }
-
-      mockFetch.mockResolvedValue({
-        ok: true,
-        json: () => Promise.resolve({ data: [] }),
-      });
-
-      // Test searchRecords directly
-      await searchRecords("companies", "TestCompany");
-
-      const body = JSON.parse(mockFetch.mock.calls[0][1].body);
-      expect(body.filter.name.$contains).toBe("TestCompany");
-      expect(body.filter.name.value).toBeUndefined();
-    });
-
-    it("searchRecords works for different object types", async () => {
-      mockFetch.mockResolvedValue({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            data: [
-              {
-                id: { record_id: "person-1" },
-                values: { name: [{ full_name: "John Doe" }] },
-              },
-            ],
-          }),
-      });
-
-      const results = await searchRecords("people", "John");
-
-      expect(mockFetch.mock.calls[0][0]).toContain("/objects/people/records/query");
-      expect(results[0].name).toBe("John Doe");
+      // First call should be the company search using search endpoint
+      const [url, options] = mockFetch.mock.calls[0];
+      expect(url).toContain("/objects/records/search");
+      const searchBody = JSON.parse(options.body);
+      expect(searchBody.query).toBe("Acme");
+      expect(searchBody.objects).toEqual(["companies"]);
     });
   });
 });

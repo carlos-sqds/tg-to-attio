@@ -256,14 +256,16 @@ export async function createDeal(input: CreateDealInput): Promise<ActionResult> 
       target_record_id: input.companyId,
     };
   } else if (input.companyName) {
-    // Search for company first
+    // Search for company using the dedicated search endpoint
     const searchResponse = await attioRequest<{ data: Array<{ id: { record_id: string } }> }>(
-      "/objects/companies/records/query",
+      "/objects/records/search",
       apiKey,
       {
         method: "POST",
         body: JSON.stringify({
-          filter: { name: { $contains: input.companyName } },
+          query: input.companyName,
+          objects: ["companies"],
+          request_as: { type: "workspace" },
           limit: 1,
         }),
       }
@@ -593,33 +595,30 @@ export async function searchRecords(objectSlug: string, query: string): Promise<
   const apiKey = process.env.ATTIO_API_KEY;
   if (!apiKey) throw new Error("ATTIO_API_KEY not configured");
 
+  // Use the dedicated search endpoint for fuzzy matching on names, domains, emails, etc.
   const response = await attioRequest<{
     data: Array<{
       id: { record_id: string };
-      values: {
-        name?: Array<{ value?: string; full_name?: string }>;
-        domains?: Array<{ domain: string }>;
-      };
+      object: { api_slug: string };
+      primary_attribute?: { value?: string; full_name?: string };
     }>;
-  }>(`/objects/${objectSlug}/records/query`, apiKey, {
+  }>("/objects/records/search", apiKey, {
     method: "POST",
     body: JSON.stringify({
-      filter: {
-        name: { $contains: query },
-      },
+      query,
+      objects: [objectSlug],
+      request_as: { type: "workspace" },
       limit: 10,
     }),
   });
 
   return response.data.map((record) => {
-    const nameValue = record.values.name?.[0];
-    const name = nameValue?.full_name || nameValue?.value || "Unknown";
-    const domain = record.values.domains?.[0]?.domain;
+    const name =
+      record.primary_attribute?.full_name || record.primary_attribute?.value || "Unknown";
 
     return {
       id: record.id.record_id,
       name,
-      extra: domain,
     };
   });
 }

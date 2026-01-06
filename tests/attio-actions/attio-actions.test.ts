@@ -108,6 +108,23 @@ describe("Attio Actions", () => {
       expect(callBody.data.values.phone_numbers[0].phone_number).toBe("+1234567890");
     });
 
+    it("links to company by ID with correct array format", async () => {
+      mockSuccessResponse({
+        id: { record_id: "person-123" },
+        web_url: "https://app.attio.com/people/person-123",
+      });
+
+      await createPerson({ name: "Test Person", companyId: "company-456" });
+
+      const callBody = JSON.parse(mockFetch.mock.calls[0][1].body);
+      expect(callBody.data.values.company).toEqual([
+        {
+          target_object: "companies",
+          target_record_id: "company-456",
+        },
+      ]);
+    });
+
     it("returns error on API failure", async () => {
       mockErrorResponse(400, "Invalid request");
 

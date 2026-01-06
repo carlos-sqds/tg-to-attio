@@ -98,6 +98,7 @@ export interface CreatePersonInput {
   email?: string;
   phone?: string;
   company?: string;
+  companyId?: string;
   jobTitle?: string;
   description?: string;
 }
@@ -128,12 +129,14 @@ export async function createPerson(input: CreatePersonInput): Promise<ActionResu
     values.phone_numbers = [{ phone_number: input.phone }];
   }
 
-  if (input.company) {
-    // Reference company by name - Attio will match existing or create new
-    values.company = {
-      target_object: "companies",
-      display_name: input.company,
-    };
+  if (input.companyId) {
+    // Link to company by record ID (preferred when we have the ID)
+    values.company = [
+      {
+        target_object: "companies",
+        target_record_id: input.companyId,
+      },
+    ];
   }
 
   if (input.jobTitle) {
@@ -648,7 +651,6 @@ export async function executeActionWithNote(
 
   // Track created prerequisite records for linking
   const createdRecords: Record<string, string> = {}; // intent -> recordId
-  const createdRecordNames: Record<string, string> = {}; // intent -> name (for linking)
   const createdPrerequisites: Array<{ name: string; url?: string }> = [];
 
   const data = action.extractedData;
@@ -676,7 +678,6 @@ export async function executeActionWithNote(
               // Use existing company
               console.log("[ACTION] Found existing company:", existingCompanies[0].name);
               createdRecords["company"] = existingCompanies[0].id;
-              createdRecordNames["company"] = existingCompanies[0].name;
               prereqResult = { success: true, recordId: existingCompanies[0].id };
             } else {
               // Create only if not found
@@ -689,7 +690,6 @@ export async function executeActionWithNote(
               console.log("[ACTION] Company creation result:", prereqResult);
               if (prereqResult.success && prereqResult.recordId) {
                 createdRecords["company"] = prereqResult.recordId;
-                createdRecordNames["company"] = companyName;
                 createdPrerequisites.push({
                   name: `🏢 ${companyName}`,
                   url: prereqResult.recordUrl,
@@ -704,9 +704,7 @@ export async function executeActionWithNote(
           prereqResult = await createPerson({
             name: personName,
             email: String(prereq.extractedData.email || ""),
-            company: createdRecords["company"]
-              ? undefined
-              : String(prereq.extractedData.company || ""),
+            companyId: createdRecords["company"],
           });
           if (prereqResult.success && prereqResult.recordId) {
             createdRecords["person"] = prereqResult.recordId;
@@ -727,23 +725,23 @@ export async function executeActionWithNote(
 
   switch (action.intent) {
     case "create_person": {
-      // Use prerequisite company name if available, otherwise check associated_company
-      let companyForPerson = createdRecordNames["company"]
-        ? createdRecordNames["company"]
-        : String(data.company || data.associated_company || "");
+      // Get company ID from prerequisite or search/create
+      let companyIdForPerson = createdRecords["company"];
+      const companyNameFromData = String(data.company || data.associated_company || "");
 
-      // If we have a company name but no prerequisite company was handled, search or create it
-      if (companyForPerson && !createdRecordNames["company"]) {
-        const companies = await searchRecords("companies", companyForPerson);
+      // If no prerequisite company but we have a company name, search or create it
+      if (!companyIdForPerson && companyNameFromData) {
+        const companies = await searchRecords("companies", companyNameFromData);
         if (companies.length > 0) {
-          // Company exists, use its name for linking
-          companyForPerson = companies[0].name;
+          // Company exists, use its ID
+          companyIdForPerson = companies[0].id;
         } else {
           // Create the company
-          const createResult = await createCompany({ name: companyForPerson });
+          const createResult = await createCompany({ name: companyNameFromData });
           if (createResult.success && createResult.recordId) {
+            companyIdForPerson = createResult.recordId;
             createdPrerequisites.push({
-              name: companyForPerson,
+              name: companyNameFromData,
               url: createResult.recordUrl,
             });
           }
@@ -754,7 +752,7 @@ export async function executeActionWithNote(
         name: String(data.name || data.full_name || ""),
         email: String(data.email_addresses || data.email || ""),
         phone: String(data.phone_numbers || data.phone || ""),
-        company: companyForPerson,
+        companyId: companyIdForPerson,
         jobTitle: String(data.job_title || ""),
         description: String(data.description || ""),
       });

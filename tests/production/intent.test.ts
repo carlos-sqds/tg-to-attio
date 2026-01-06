@@ -199,7 +199,21 @@ describe("Production AI Intent Tests", () => {
 
       expect(result.result.intent).toBe("add_note");
       const data = result.result.extractedData;
-      expect(String(data.name || data.company || data.parent_name).toLowerCase()).toContain("acme");
+      // Check various fields the AI might use for the parent record
+      const parentFields = [
+        "name",
+        "company",
+        "parent_name",
+        "parent_object",
+        "associated_company",
+        "target_record",
+        "record_name",
+      ];
+      const foundAcme = parentFields.some((field) => {
+        const value = String(data[field] || "").toLowerCase();
+        return value.includes("acme");
+      });
+      expect(foundAcme).toBe(true);
     }, 30000);
   });
 

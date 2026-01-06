@@ -49,7 +49,7 @@ export async function GET(): Promise<Response> {
     "BOT_TOKEN",
     "KV_REST_API_URL",
     "KV_REST_API_TOKEN",
-    "OPENAI_API_KEY",
+    "AI_GATEWAY_API_KEY",
   ];
 
   const missingEnvVars = requiredEnvVars.filter((key) => !process.env[key]);

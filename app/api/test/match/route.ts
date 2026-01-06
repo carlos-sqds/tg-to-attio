@@ -17,6 +17,71 @@ interface MatchResult {
   matchReason: string;
 }
 
+// Common company suffixes to strip for matching
+const COMPANY_SUFFIXES = [
+  "inc",
+  "inc.",
+  "incorporated",
+  "llc",
+  "llc.",
+  "ltd",
+  "ltd.",
+  "limited",
+  "corp",
+  "corp.",
+  "corporation",
+  "co",
+  "co.",
+  "company",
+  "labs",
+  "lab",
+  "technologies",
+  "technology",
+  "tech",
+  "solutions",
+  "services",
+  "group",
+  "holdings",
+  "partners",
+  "ventures",
+  "capital",
+  "gmbh",
+  "ag",
+  "sa",
+  "pty",
+  "plc",
+];
+
+/**
+ * Strip common suffixes from company name for better matching.
+ */
+function stripCompanySuffixes(name: string): string {
+  let result = name.toLowerCase().trim();
+  for (const suffix of COMPANY_SUFFIXES) {
+    // Match suffix at end of string, possibly with punctuation
+    const pattern = new RegExp(`\\s+${suffix.replace(".", "\\.")}[.]?$`, "i");
+    result = result.replace(pattern, "").trim();
+  }
+  return result;
+}
+
+/**
+ * Calculate word-based similarity between two strings.
+ */
+function calculateWordSimilarity(a: string, b: string): number {
+  const wordsA = a.toLowerCase().split(/\s+/).filter(Boolean);
+  const wordsB = b.toLowerCase().split(/\s+/).filter(Boolean);
+
+  if (wordsA.length === 0 || wordsB.length === 0) return 0;
+
+  // Count matching words
+  const matchingWords = wordsA.filter((word) =>
+    wordsB.some((w) => w === word || w.includes(word) || word.includes(w))
+  ).length;
+
+  return matchingWords / Math.max(wordsA.length, wordsB.length);
+}
+
 /**
  * Calculate confidence score for a match.
  */
@@ -34,12 +99,40 @@ function calculateMatchConfidence(
   const parsedNameLower = parsed.name.toLowerCase().trim();
   const resultNameLower = firstResult.name.toLowerCase().trim();
 
-  // Exact match
+  // Strip suffixes for comparison
+  const inputStripped = stripCompanySuffixes(parsedNameLower);
+  const resultStripped = stripCompanySuffixes(resultNameLower);
+
+  // Ambiguity check: if there are many results, cap confidence at medium
+  // unless it's an exact match or domain match
+  const isAmbiguous = results.length > 3;
+
+  // Helper to apply ambiguity cap
+  const capIfAmbiguous = (conf: "high" | "medium" | "low"): "high" | "medium" | "low" => {
+    if (isAmbiguous && conf === "high") return "medium";
+    return conf;
+  };
+
+  // Exact match (with or without suffixes) - not capped, user searched for exactly this
   if (resultNameLower === inputLower || resultNameLower === parsedNameLower) {
     return { confidence: "high", reason: "Exact name match" };
   }
 
-  // Domain match
+  // Exact match after stripping suffixes - not capped for true suffix stripping
+  if (inputStripped === resultStripped && inputStripped.length > 2) {
+    // Only keep high confidence if input was longer (had suffix stripped)
+    // If input is same length as stripped, it's just generic and should be capped
+    const hadSuffixStripped = parsedNameLower.length > inputStripped.length;
+    if (hadSuffixStripped) {
+      return { confidence: "high", reason: "Exact match (ignoring suffixes)" };
+    }
+    return {
+      confidence: capIfAmbiguous("high"),
+      reason: isAmbiguous ? "Match found but ambiguous results" : "Exact match (ignoring suffixes)",
+    };
+  }
+
+  // Domain match - highest priority, not capped
   if (parsed.domain && firstResult.extra) {
     const inputDomain = parsed.domain.toLowerCase();
     const resultDomain = firstResult.extra.toLowerCase();
@@ -51,21 +144,58 @@ function calculateMatchConfidence(
     }
   }
 
-  // Name contains check
-  if (resultNameLower.includes(parsedNameLower) || parsedNameLower.includes(resultNameLower)) {
-    // Check if it's a significant portion
-    const overlapRatio =
-      Math.min(parsedNameLower.length, resultNameLower.length) /
-      Math.max(parsedNameLower.length, resultNameLower.length);
-    if (overlapRatio > 0.7) {
-      return { confidence: "medium", reason: `Name overlap (${Math.round(overlapRatio * 100)}%)` };
+  // Core name is contained in result (e.g., "Squads" in "Squads Labs")
+  if (resultStripped.includes(inputStripped) && inputStripped.length >= 3) {
+    // Input is the primary name, result has additional words
+    const extraWords = resultStripped.replace(inputStripped, "").trim();
+    if (extraWords.length < inputStripped.length) {
+      return {
+        confidence: capIfAmbiguous("high"),
+        reason: isAmbiguous
+          ? "Core name match but ambiguous results"
+          : "Core name match with qualifier",
+      };
     }
-    return { confidence: "low", reason: `Weak name overlap (${Math.round(overlapRatio * 100)}%)` };
+    return { confidence: "medium", reason: "Name contained in result" };
   }
 
-  // Multiple results - ambiguous
+  // Result name is contained in input (e.g., "Acme Corp" when searching "Acme")
+  if (inputStripped.includes(resultStripped) && resultStripped.length >= 3) {
+    return { confidence: "medium", reason: "Result name contained in input" };
+  }
+
+  // Word-based similarity
+  const wordSim = calculateWordSimilarity(inputStripped, resultStripped);
+  if (wordSim >= 0.8) {
+    return {
+      confidence: capIfAmbiguous("high"),
+      reason: `Word match (${Math.round(wordSim * 100)}%)`,
+    };
+  }
+  if (wordSim >= 0.5) {
+    return { confidence: "medium", reason: `Partial word match (${Math.round(wordSim * 100)}%)` };
+  }
+
+  // Character-based overlap ratio
+  const overlapRatio =
+    Math.min(inputStripped.length, resultStripped.length) /
+    Math.max(inputStripped.length, resultStripped.length);
+
+  if (overlapRatio > 0.8) {
+    return { confidence: "medium", reason: `Name overlap (${Math.round(overlapRatio * 100)}%)` };
+  }
+
+  // Multiple results - check if first is clearly better
   if (results.length > 1) {
+    // Check if first result's stripped name starts with input
+    if (resultStripped.startsWith(inputStripped) && inputStripped.length >= 3) {
+      return { confidence: "medium", reason: "Best match among multiple results" };
+    }
     return { confidence: "low", reason: `Ambiguous: ${results.length} results, no clear match` };
+  }
+
+  if (overlapRatio > 0.5) {
+    return { confidence: "low", reason: `Weak name overlap (${Math.round(overlapRatio * 100)}%)` };
   }
 
   return { confidence: "low", reason: "Weak match - first result taken" };
@@ -144,9 +274,18 @@ export async function POST(request: NextRequest): Promise<Response> {
 
 async function testMatch(input: string, object: string): Promise<MatchResult> {
   const parsed = object === "companies" ? parseCompanyInput(input) : { name: input };
-  const searchQuery = parsed.name;
 
-  const results = await searchRecords(object, searchQuery);
+  // Strip suffixes from search query to find the core company name
+  const strippedName = stripCompanySuffixes(parsed.name);
+  const searchQuery = strippedName.length >= 2 ? strippedName : parsed.name;
+
+  let results = await searchRecords(object, searchQuery);
+
+  // If no results with stripped name, try original
+  if (results.length === 0 && searchQuery !== parsed.name) {
+    results = await searchRecords(object, parsed.name);
+  }
+
   const { confidence, reason } = calculateMatchConfidence(input, parsed, results);
 
   return {

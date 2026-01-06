@@ -483,6 +483,11 @@ describe("Attio Actions", () => {
     });
 
     it("executes prerequisite actions before main action", async () => {
+      // Search for existing company (returns empty - not found)
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ data: [] }),
+      });
       // Create company (prerequisite)
       mockSuccessResponse({
         id: { record_id: "company-prereq" },
@@ -517,6 +522,54 @@ describe("Attio Actions", () => {
       expect(result.success).toBe(true);
       expect(result.createdPrerequisites).toHaveLength(1);
       expect(result.createdPrerequisites![0].name).toContain("Acme Inc");
+    });
+
+    it("reuses existing company in prerequisite actions", async () => {
+      // Search for existing company (returns existing company)
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            data: [
+              {
+                id: { record_id: "existing-company-123" },
+                object_slug: "companies",
+                record_text: "Acme Inc",
+              },
+            ],
+          }),
+      });
+      // Create person (main) - no company creation needed
+      mockSuccessResponse({
+        id: { record_id: "person-123" },
+        web_url: "https://app.attio.com/people/person-123",
+      });
+      // Create note
+      mockSuccessResponse({
+        id: { note_id: "note-456" },
+      });
+
+      const result = await executeActionWithNote(
+        {
+          intent: "create_person",
+          extractedData: { name: "John Doe" },
+          noteTitle: "Notes",
+          targetObject: "people",
+          prerequisiteActions: [
+            {
+              intent: "create_company",
+              extractedData: { name: "Acme Inc" },
+            },
+          ],
+        },
+        "Content"
+      );
+
+      expect(result.success).toBe(true);
+      // Should NOT have created prerequisites since company already existed
+      expect(result.createdPrerequisites).toBeUndefined();
+      // Should have made 3 calls: search, create person, create note (no create company)
+      expect(mockFetch).toHaveBeenCalledTimes(3);
     });
 
     it("returns error for unknown intent", async () => {

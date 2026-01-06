@@ -668,16 +668,32 @@ export async function executeActionWithNote(
       switch (prereq.intent) {
         case "create_company": {
           const companyName = String(prereq.extractedData.name || "");
-          console.log("[ACTION] Creating prerequisite company:", companyName);
-          prereqResult = await createCompany({
-            name: companyName,
-            domain: String(prereq.extractedData.domains || prereq.extractedData.domain || ""),
-            location: String(prereq.extractedData.primary_location || ""),
-          });
-          console.log("[ACTION] Company creation result:", prereqResult);
-          if (prereqResult.success && prereqResult.recordId) {
-            createdRecords["company"] = prereqResult.recordId;
-            createdPrerequisites.push({ name: `🏢 ${companyName}`, url: prereqResult.recordUrl });
+          console.log("[ACTION] Checking prerequisite company:", companyName);
+          if (companyName) {
+            // Search first to avoid creating duplicates
+            const existingCompanies = await searchRecords("companies", companyName);
+            if (existingCompanies.length > 0) {
+              // Use existing company
+              console.log("[ACTION] Found existing company:", existingCompanies[0].name);
+              createdRecords["company"] = existingCompanies[0].id;
+              prereqResult = { success: true, recordId: existingCompanies[0].id };
+            } else {
+              // Create only if not found
+              console.log("[ACTION] Creating prerequisite company:", companyName);
+              prereqResult = await createCompany({
+                name: companyName,
+                domain: String(prereq.extractedData.domains || prereq.extractedData.domain || ""),
+                location: String(prereq.extractedData.primary_location || ""),
+              });
+              console.log("[ACTION] Company creation result:", prereqResult);
+              if (prereqResult.success && prereqResult.recordId) {
+                createdRecords["company"] = prereqResult.recordId;
+                createdPrerequisites.push({
+                  name: `🏢 ${companyName}`,
+                  url: prereqResult.recordUrl,
+                });
+              }
+            }
           }
           break;
         }

@@ -649,6 +649,7 @@ export async function executeActionWithNote(
 
   // Track created prerequisite records for linking
   const createdRecords: Record<string, string> = {}; // intent -> recordId
+  const createdRecordNames: Record<string, string> = {}; // intent -> name (for linking)
   const createdPrerequisites: Array<{ name: string; url?: string }> = [];
 
   const data = action.extractedData;
@@ -676,6 +677,7 @@ export async function executeActionWithNote(
               // Use existing company
               console.log("[ACTION] Found existing company:", existingCompanies[0].name);
               createdRecords["company"] = existingCompanies[0].id;
+              createdRecordNames["company"] = existingCompanies[0].name;
               prereqResult = { success: true, recordId: existingCompanies[0].id };
             } else {
               // Create only if not found
@@ -688,6 +690,7 @@ export async function executeActionWithNote(
               console.log("[ACTION] Company creation result:", prereqResult);
               if (prereqResult.success && prereqResult.recordId) {
                 createdRecords["company"] = prereqResult.recordId;
+                createdRecordNames["company"] = companyName;
                 createdPrerequisites.push({
                   name: `🏢 ${companyName}`,
                   url: prereqResult.recordUrl,
@@ -725,13 +728,13 @@ export async function executeActionWithNote(
 
   switch (action.intent) {
     case "create_person": {
-      // Use prerequisite company if created, otherwise check associated_company
-      let companyForPerson = createdRecords["company"]
-        ? undefined
+      // Use prerequisite company name if available, otherwise check associated_company
+      let companyForPerson = createdRecordNames["company"]
+        ? createdRecordNames["company"]
         : String(data.company || data.associated_company || "");
 
-      // If we have a company name but no prerequisite was created, search or create it
-      if (companyForPerson && !createdRecords["company"]) {
+      // If we have a company name but no prerequisite company was handled, search or create it
+      if (companyForPerson && !createdRecordNames["company"]) {
         const companies = await searchRecords("companies", companyForPerson);
         if (companies.length > 0) {
           // Company exists, use its name for linking

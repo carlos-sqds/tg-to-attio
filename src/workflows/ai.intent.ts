@@ -8,18 +8,16 @@ import {
   type WorkspaceMember,
 } from "@/src/services/attio/schema-types";
 import { buildSystemPrompt, buildUserPrompt } from "@/src/ai/prompts";
-import type { CallerInfo } from "@/workflows/hooks";
+import type { CallerInfo } from "@/src/lib/types/session.types";
 
 const DEFAULT_MODEL = "anthropic/claude-3-5-sonnet-20241022";
 const CHEAP_MODEL = "google/gemini-2.0-flash-lite";
 
 /**
- * Workflow step for analyzing user intent
- * Uses Vercel AI Gateway with Claude Opus 4.5
+ * Analyze user intent from forwarded messages and instruction.
+ * Uses Vercel AI Gateway with Claude.
  */
 export async function analyzeIntent(context: AIContext): Promise<SuggestedAction> {
-  "use step";
-
   const apiKey = process.env.AI_GATEWAY_API_KEY;
   if (!apiKey) {
     throw new Error("AI_GATEWAY_API_KEY not configured");
@@ -36,9 +34,8 @@ export async function analyzeIntent(context: AIContext): Promise<SuggestedAction
 }
 
 /**
- * Workflow step for handling clarification responses
- * Takes user's clarification and updates the suggested action
- * Understands additional instructions like "create if needed"
+ * Process clarification response and update suggested action.
+ * Understands additional instructions like "create if needed".
  */
 export async function processClarification(
   previousAction: SuggestedAction,
@@ -46,8 +43,6 @@ export async function processClarification(
   userResponse: string,
   schema: AIContext["schema"]
 ): Promise<SuggestedAction> {
-  "use step";
-
   const apiKey = process.env.AI_GATEWAY_API_KEY;
   if (!apiKey) {
     throw new Error("AI_GATEWAY_API_KEY not configured");
@@ -81,6 +76,9 @@ Interpret the user's intent and update the suggested action accordingly:
   return object;
 }
 
+/**
+ * Resolved assignee with member details.
+ */
 export interface ResolvedAssignee {
   memberId: string;
   memberName: string;
@@ -90,7 +88,7 @@ export interface ResolvedAssignee {
 /**
  * Resolve an assignee name to a workspace member using LLM fuzzy matching.
  * Uses a cheap model (gemini-2.0-flash-lite) for cost efficiency.
- * 
+ *
  * @param assigneeName - The name to match (can be partial, nickname, "me", etc.)
  * @param callerInfo - Info about the Telegram user who called /done (used when assigneeName is "me" or empty)
  * @param workspaceMembers - List of workspace members to match against
@@ -102,15 +100,13 @@ export async function resolveAssignee(
   workspaceMembers: WorkspaceMember[],
   defaultToCaller: boolean = true
 ): Promise<ResolvedAssignee | null> {
-  "use step";
-
   if (workspaceMembers.length === 0) {
     return null;
   }
 
   // Determine what name to search for
   let searchName = assigneeName.trim();
-  
+
   // Handle "me" - use caller's info
   if (searchName.toLowerCase() === "me" && callerInfo) {
     searchName = [callerInfo.firstName, callerInfo.lastName].filter(Boolean).join(" ");
@@ -118,7 +114,7 @@ export async function resolveAssignee(
       searchName = callerInfo.username;
     }
   }
-  
+
   // Handle empty - default to caller if enabled
   if (!searchName && defaultToCaller && callerInfo) {
     searchName = [callerInfo.firstName, callerInfo.lastName].filter(Boolean).join(" ");
@@ -146,8 +142,13 @@ export async function resolveAssignee(
     const { object } = await generateObject({
       model: gateway(CHEAP_MODEL),
       schema: z.object({
-        matchedMemberId: z.string().nullable().describe("The ID of the matched member, or null if no match"),
-        confidence: z.enum(["high", "medium", "low", "none"]).describe("Confidence level of the match"),
+        matchedMemberId: z
+          .string()
+          .nullable()
+          .describe("The ID of the matched member, or null if no match"),
+        confidence: z
+          .enum(["high", "medium", "low", "none"])
+          .describe("Confidence level of the match"),
       }),
       prompt: `Match the name "${searchName}" to one of these workspace members:
 

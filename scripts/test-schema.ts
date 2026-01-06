@@ -1,28 +1,38 @@
 import { config } from "dotenv";
 config({ override: true });
 
-import { fetchFullSchemaLocal } from "../workflows/steps/attio-schema";
+import { fetchFullSchema } from "../src/workflows/attio.schema";
+import type { AttributeDefinition } from "../src/services/attio/schema-types";
 
 async function main() {
   console.log("Fetching Attio schema...\n");
 
   try {
-    const schema = await fetchFullSchemaLocal();
+    const schema = await fetchFullSchema();
 
     console.log("=== OBJECTS ===\n");
     for (const obj of schema.objects) {
       console.log(`${obj.singularNoun} (${obj.apiSlug})`);
       console.log(`  Attributes: ${obj.attributes.length}`);
-      
-      const writableAttrs = obj.attributes.filter((a) => a.isWritable && !a.isArchived);
+
+      const writableAttrs = obj.attributes.filter(
+        (a: AttributeDefinition) => a.isWritable && !a.isArchived
+      );
       console.log(`  Writable: ${writableAttrs.length}`);
-      
-      const requiredAttrs = obj.attributes.filter((a) => a.isRequired);
+
+      const requiredAttrs = obj.attributes.filter((a: AttributeDefinition) => a.isRequired);
       if (requiredAttrs.length > 0) {
-        console.log(`  Required: ${requiredAttrs.map((a) => a.apiSlug).join(", ")}`);
+        console.log(
+          `  Required: ${requiredAttrs.map((a: AttributeDefinition) => a.apiSlug).join(", ")}`
+        );
       }
-      
-      console.log(`  Sample fields: ${writableAttrs.slice(0, 5).map((a) => `${a.apiSlug}(${a.type})`).join(", ")}`);
+
+      console.log(
+        `  Sample fields: ${writableAttrs
+          .slice(0, 5)
+          .map((a: AttributeDefinition) => `${a.apiSlug}(${a.type})`)
+          .join(", ")}`
+      );
       console.log();
     }
 
@@ -32,14 +42,18 @@ async function main() {
       console.log(`  Parent: ${list.parentObject}`);
       console.log(`  List Attributes: ${list.attributes.length}`);
       if (list.attributes.length > 0) {
-        console.log(`  Fields: ${list.attributes.map((a) => a.apiSlug).join(", ")}`);
+        console.log(
+          `  Fields: ${list.attributes.map((a: AttributeDefinition) => a.apiSlug).join(", ")}`
+        );
       }
       console.log();
     }
 
     console.log("=== WORKSPACE MEMBERS ===\n");
     for (const member of schema.workspaceMembers) {
-      console.log(`${member.firstName} ${member.lastName} (${member.email}) - ${member.accessLevel}`);
+      console.log(
+        `${member.firstName} ${member.lastName} (${member.email}) - ${member.accessLevel}`
+      );
     }
     console.log();
 
@@ -51,12 +65,8 @@ async function main() {
 
     // Save to file for reference
     const fs = await import("fs");
-    fs.writeFileSync(
-      "schema-dump.json",
-      JSON.stringify(schema, null, 2)
-    );
+    fs.writeFileSync("schema-dump.json", JSON.stringify(schema, null, 2));
     console.log("\nFull schema saved to schema-dump.json");
-
   } catch (error) {
     console.error("Failed to fetch schema:", error);
     process.exit(1);

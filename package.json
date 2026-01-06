@@ -19,6 +19,9 @@
     "test:ai:smoke": "vitest run tests/ai/intent.test.ts -t 'Smoke'",
     "test:attio": "vitest run tests/attio-actions",
     "test:e2e": "vitest run tests/e2e",
+    "test:production": "PRODUCTION_URL=https://tg-to-attio.vercel.app vitest run tests/production",
+    "test:production:matching": "PRODUCTION_URL=https://tg-to-attio.vercel.app vitest run tests/production/matching.test.ts",
+    "test:production:intent": "PRODUCTION_URL=https://tg-to-attio.vercel.app vitest run tests/production/intent.test.ts",
     "test:schema": "tsx scripts/test-schema.ts",
     "prepare": "husky"
   },
@@ -33,13 +36,14 @@
   "dependencies": {
     "@ai-sdk/gateway": "^2.0.18",
     "@vercel/analytics": "^1.6.1",
+    "@vercel/kv": "^3.0.0",
     "ai": "^5.0.106",
     "dotenv": "^17.2.3",
+    "grammy": "^1.39.2",
     "next": "^16.0.7",
     "react": "^19.2.1",
     "react-dom": "^19.2.1",
     "vitest": "^4.0.15",
-    "workflow": "^4.0.1-beta.26",
     "zod": "^3.25.76"
   },
   "devDependencies": {

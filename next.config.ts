@@ -1,4 +1,3 @@
-import { withWorkflow } from "workflow/next";
 import type { NextConfig } from "next";
 import { execSync } from "child_process";
 
@@ -18,4 +17,4 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default withWorkflow(nextConfig);
+export default nextConfig;

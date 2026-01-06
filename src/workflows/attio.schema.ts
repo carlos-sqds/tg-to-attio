@@ -9,13 +9,9 @@ import type {
   AttioApiWorkspaceMember,
   AttioSchema,
 } from "@/src/services/attio/schema-types";
+import { getCachedSchema, setCachedSchema } from "@/src/lib/kv/schema-cache.kv";
 
 const ATTIO_BASE_URL = "https://api.attio.com/v2";
-
-// Schema cache (5 minute TTL)
-const SCHEMA_CACHE_TTL = 5 * 60 * 1000;
-let schemaCache: AttioSchema | null = null;
-let schemaCacheTime = 0;
 
 async function attioRequest<T>(
   endpoint: string,
@@ -59,15 +55,15 @@ function mapAttribute(attr: AttioApiAttribute): AttributeDefinition {
   };
 }
 
+/**
+ * Fetch all Attio objects with their attributes.
+ */
 export async function getObjects(): Promise<ObjectDefinition[]> {
-  "use step";
-
   const apiKey = process.env.ATTIO_API_KEY;
   if (!apiKey) throw new Error("ATTIO_API_KEY not configured");
 
   const response = await attioRequest<{ data: AttioApiObject[] }>("/objects", apiKey);
 
-  // Fetch all attributes in parallel
   const objectsWithAttrs = await Promise.all(
     response.data.map(async (obj) => {
       const attrsResponse = await attioRequest<{ data: AttioApiAttribute[] }>(
@@ -90,9 +86,10 @@ export async function getObjects(): Promise<ObjectDefinition[]> {
   return objectsWithAttrs;
 }
 
+/**
+ * Fetch attributes for a specific object.
+ */
 export async function getObjectAttributes(objectSlug: string): Promise<AttributeDefinition[]> {
-  "use step";
-
   const apiKey = process.env.ATTIO_API_KEY;
   if (!apiKey) throw new Error("ATTIO_API_KEY not configured");
 
@@ -104,15 +101,15 @@ export async function getObjectAttributes(objectSlug: string): Promise<Attribute
   return response.data.map(mapAttribute);
 }
 
+/**
+ * Fetch all Attio lists with their attributes.
+ */
 export async function getLists(): Promise<ListDefinition[]> {
-  "use step";
-
   const apiKey = process.env.ATTIO_API_KEY;
   if (!apiKey) throw new Error("ATTIO_API_KEY not configured");
 
   const response = await attioRequest<{ data: AttioApiList[] }>("/lists", apiKey);
 
-  // Fetch all attributes in parallel
   const listsWithAttrs = await Promise.all(
     response.data.map(async (list) => {
       const attrsResponse = await attioRequest<{ data: AttioApiAttribute[] }>(
@@ -136,9 +133,10 @@ export async function getLists(): Promise<ListDefinition[]> {
   return listsWithAttrs;
 }
 
+/**
+ * Fetch all workspace members.
+ */
 export async function getWorkspaceMembers(): Promise<WorkspaceMember[]> {
-  "use step";
-
   const apiKey = process.env.ATTIO_API_KEY;
   if (!apiKey) throw new Error("ATTIO_API_KEY not configured");
 
@@ -158,9 +156,10 @@ export async function getWorkspaceMembers(): Promise<WorkspaceMember[]> {
   }));
 }
 
+/**
+ * Fetch the full Attio schema (objects, lists, workspace members).
+ */
 export async function fetchFullSchema(): Promise<AttioSchema> {
-  "use step";
-
   const [objects, lists, workspaceMembers] = await Promise.all([
     getObjects(),
     getLists(),
@@ -175,85 +174,19 @@ export async function fetchFullSchema(): Promise<AttioSchema> {
   };
 }
 
+/**
+ * Fetch the full Attio schema with KV caching.
+ * Uses 5-minute TTL cache in Vercel KV.
+ */
 export async function fetchFullSchemaCached(): Promise<AttioSchema> {
-  "use step";
-
-  const now = Date.now();
-  if (schemaCache && now - schemaCacheTime < SCHEMA_CACHE_TTL) {
-    return schemaCache;
+  // Try KV cache first
+  const cached = await getCachedSchema();
+  if (cached) {
+    return cached;
   }
 
+  // Fetch fresh and cache
   const schema = await fetchFullSchema();
-  schemaCache = schema;
-  schemaCacheTime = now;
+  await setCachedSchema(schema);
   return schema;
-}
-
-// Local version for testing (no "use step" directive)
-export async function fetchFullSchemaLocal(): Promise<AttioSchema> {
-  const apiKey = process.env.ATTIO_API_KEY;
-  if (!apiKey) throw new Error("ATTIO_API_KEY not configured");
-
-  // Fetch objects, lists, and members in parallel
-  const [objectsResponse, listsResponse, membersResponse] = await Promise.all([
-    attioRequest<{ data: AttioApiObject[] }>("/objects", apiKey),
-    attioRequest<{ data: AttioApiList[] }>("/lists", apiKey),
-    attioRequest<{ data: AttioApiWorkspaceMember[] }>("/workspace_members", apiKey),
-  ]);
-
-  // Fetch all object and list attributes in parallel
-  const [objects, lists] = await Promise.all([
-    Promise.all(
-      objectsResponse.data.map(async (obj) => {
-        const attrsResponse = await attioRequest<{ data: AttioApiAttribute[] }>(
-          `/objects/${obj.api_slug}/attributes`,
-          apiKey
-        );
-        return {
-          workspaceId: obj.id.workspace_id,
-          objectId: obj.id.object_id,
-          apiSlug: obj.api_slug,
-          singularNoun: obj.singular_noun,
-          pluralNoun: obj.plural_noun,
-          createdAt: obj.created_at,
-          attributes: attrsResponse.data.map(mapAttribute),
-        };
-      })
-    ),
-    Promise.all(
-      listsResponse.data.map(async (list) => {
-        const attrsResponse = await attioRequest<{ data: AttioApiAttribute[] }>(
-          `/lists/${list.api_slug}/attributes`,
-          apiKey
-        );
-        return {
-          id: list.id.list_id,
-          apiSlug: list.api_slug,
-          name: list.name,
-          parentObject: list.parent_object,
-          parentObjectId: list.parent_object_id,
-          createdAt: list.created_at,
-          workspaceMemberAccess: list.workspace_member_access,
-          attributes: attrsResponse.data.map(mapAttribute),
-        };
-      })
-    ),
-  ]);
-
-  const workspaceMembers = membersResponse.data.map((member) => ({
-    id: member.id.workspace_member_id,
-    firstName: member.first_name,
-    lastName: member.last_name,
-    email: member.email_address,
-    avatarUrl: member.avatar_url || undefined,
-    accessLevel: member.access_level,
-    createdAt: member.created_at,
-  }));
-
-  return {
-    objects,
-    lists,
-    workspaceMembers,
-    lastFetched: Date.now(),
-  };
 }

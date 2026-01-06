@@ -14,7 +14,7 @@ import {
   type CreateDealInput,
   type CreateTaskInput,
   type CreateNoteInput,
-} from "@/workflows/steps/attio-actions";
+} from "@/src/workflows/attio.actions";
 
 // Mock fetch globally
 const mockFetch = vi.fn();

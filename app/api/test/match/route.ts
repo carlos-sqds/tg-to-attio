@@ -106,34 +106,45 @@ function calculateSequentialMatch(input: string, result: string): number {
 }
 
 /**
- * Check if the first word of input matches the first word of result.
- * More lenient for multi-word results where only the company name matters.
+ * Check if input matches any word in the result (not just the first).
+ * Returns the best match score across all result words.
  */
-function calculateFirstWordMatch(input: string, result: string): number {
-  const inputWords = input.toLowerCase().split(/\s+/).filter(Boolean);
+function calculateBestWordMatch(input: string, result: string): { score: number; word: string } {
+  const inputLower = input.toLowerCase().trim();
   const resultWords = result.toLowerCase().split(/\s+/).filter(Boolean);
 
-  if (inputWords.length === 0 || resultWords.length === 0) return 0;
+  if (inputLower.length === 0 || resultWords.length === 0) {
+    return { score: 0, word: "" };
+  }
 
-  const inputFirst = inputWords[0];
-  const resultFirst = resultWords[0];
+  let bestScore = 0;
+  let bestWord = "";
 
-  // Exact first word match
-  if (inputFirst === resultFirst) return 1.0;
+  for (const resultWord of resultWords) {
+    // Exact word match
+    if (inputLower === resultWord) {
+      return { score: 1.0, word: resultWord };
+    }
 
-  // Sequential match on first word
-  let matchCount = 0;
-  const minLen = Math.min(inputFirst.length, resultFirst.length);
-  for (let i = 0; i < minLen; i++) {
-    if (inputFirst[i] === resultFirst[i]) {
-      matchCount++;
-    } else {
-      break;
+    // Sequential match on this word
+    let matchCount = 0;
+    const minLen = Math.min(inputLower.length, resultWord.length);
+    for (let i = 0; i < minLen; i++) {
+      if (inputLower[i] === resultWord[i]) {
+        matchCount++;
+      } else {
+        break;
+      }
+    }
+
+    const score = inputLower.length > 0 ? matchCount / inputLower.length : 0;
+    if (score > bestScore) {
+      bestScore = score;
+      bestWord = resultWord;
     }
   }
 
-  // Return how much of the input's first word matches
-  return inputFirst.length > 0 ? matchCount / inputFirst.length : 0;
+  return { score: bestScore, word: bestWord };
 }
 
 /**
@@ -209,19 +220,19 @@ function calculateMatchConfidence(
     };
   }
 
-  // First word match - for multi-word company names like "Squads Labs"
-  // If input is "Squads" and result is "Squads Labs", first word matches 100%
-  const firstWordMatch = calculateFirstWordMatch(inputStripped, resultStripped);
-  if (firstWordMatch >= 0.9 && inputStripped.length >= 3) {
+  // Best word match - check if input matches ANY word in the result
+  // e.g., "Squad" matches "Labs Squads" because "squad" matches "squads" at 100%
+  const bestWordMatch = calculateBestWordMatch(inputStripped, resultStripped);
+  if (bestWordMatch.score >= 0.9 && inputStripped.length >= 3) {
     return {
       confidence: capIfAmbiguous("high"),
-      reason: `First word match (${Math.round(firstWordMatch * 100)}%)`,
+      reason: `Word match "${bestWordMatch.word}" (${Math.round(bestWordMatch.score * 100)}%)`,
     };
   }
-  if (firstWordMatch >= 0.7 && inputStripped.length >= 3) {
+  if (bestWordMatch.score >= 0.7 && inputStripped.length >= 3) {
     return {
       confidence: "medium",
-      reason: `Partial first word match (${Math.round(firstWordMatch * 100)}%)`,
+      reason: `Partial word match "${bestWordMatch.word}" (${Math.round(bestWordMatch.score * 100)}%)`,
     };
   }
 

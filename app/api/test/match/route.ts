@@ -83,6 +83,60 @@ function calculateWordSimilarity(a: string, b: string): number {
 }
 
 /**
+ * Count consecutive matching characters from the start of two strings.
+ * Returns the ratio of matching chars to the shorter string's length.
+ */
+function calculateSequentialMatch(input: string, result: string): number {
+  const a = input.toLowerCase();
+  const b = result.toLowerCase();
+
+  let matchCount = 0;
+  const minLen = Math.min(a.length, b.length);
+
+  for (let i = 0; i < minLen; i++) {
+    if (a[i] === b[i]) {
+      matchCount++;
+    } else {
+      break;
+    }
+  }
+
+  // Return ratio relative to input length (what % of input matches from start)
+  return input.length > 0 ? matchCount / input.length : 0;
+}
+
+/**
+ * Check if the first word of input matches the first word of result.
+ * More lenient for multi-word results where only the company name matters.
+ */
+function calculateFirstWordMatch(input: string, result: string): number {
+  const inputWords = input.toLowerCase().split(/\s+/).filter(Boolean);
+  const resultWords = result.toLowerCase().split(/\s+/).filter(Boolean);
+
+  if (inputWords.length === 0 || resultWords.length === 0) return 0;
+
+  const inputFirst = inputWords[0];
+  const resultFirst = resultWords[0];
+
+  // Exact first word match
+  if (inputFirst === resultFirst) return 1.0;
+
+  // Sequential match on first word
+  let matchCount = 0;
+  const minLen = Math.min(inputFirst.length, resultFirst.length);
+  for (let i = 0; i < minLen; i++) {
+    if (inputFirst[i] === resultFirst[i]) {
+      matchCount++;
+    } else {
+      break;
+    }
+  }
+
+  // Return how much of the input's first word matches
+  return inputFirst.length > 0 ? matchCount / inputFirst.length : 0;
+}
+
+/**
  * Calculate confidence score for a match.
  */
 function calculateMatchConfidence(
@@ -144,6 +198,33 @@ function calculateMatchConfidence(
     }
   }
 
+  // Sequential character matching - strong signal for company names
+  // e.g., "Squad" matches "Squads Labs" because first 5 chars match (100% of input)
+  const seqMatch = calculateSequentialMatch(inputStripped, resultStripped);
+  if (seqMatch >= 0.9 && inputStripped.length >= 3) {
+    // 90%+ of input matches from start - very strong signal
+    return {
+      confidence: capIfAmbiguous("high"),
+      reason: `Sequential match (${Math.round(seqMatch * 100)}% of input)`,
+    };
+  }
+
+  // First word match - for multi-word company names like "Squads Labs"
+  // If input is "Squads" and result is "Squads Labs", first word matches 100%
+  const firstWordMatch = calculateFirstWordMatch(inputStripped, resultStripped);
+  if (firstWordMatch >= 0.9 && inputStripped.length >= 3) {
+    return {
+      confidence: capIfAmbiguous("high"),
+      reason: `First word match (${Math.round(firstWordMatch * 100)}%)`,
+    };
+  }
+  if (firstWordMatch >= 0.7 && inputStripped.length >= 3) {
+    return {
+      confidence: "medium",
+      reason: `Partial first word match (${Math.round(firstWordMatch * 100)}%)`,
+    };
+  }
+
   // Core name is contained in result (e.g., "Squads" in "Squads Labs")
   if (resultStripped.includes(inputStripped) && inputStripped.length >= 3) {
     // Input is the primary name, result has additional words
@@ -162,6 +243,14 @@ function calculateMatchConfidence(
   // Result name is contained in input (e.g., "Acme Corp" when searching "Acme")
   if (inputStripped.includes(resultStripped) && resultStripped.length >= 3) {
     return { confidence: "medium", reason: "Result name contained in input" };
+  }
+
+  // Fallback sequential match for shorter matches
+  if (seqMatch >= 0.7 && inputStripped.length >= 3) {
+    return {
+      confidence: "medium",
+      reason: `Sequential match (${Math.round(seqMatch * 100)}% of input)`,
+    };
   }
 
   // Word-based similarity

@@ -13,7 +13,9 @@ import { config } from "dotenv";
 config({ path: ".env" });
 
 const ATTIO_BASE_URL = "https://api.attio.com/v2";
-const TEST_PREFIX = `__TEST_${Date.now()}__`;
+const TEST_TIMESTAMP = Date.now();
+const TEST_PREFIX = `__TEST_${TEST_TIMESTAMP}__`;
+const TEST_DOMAIN = `test-e2e-${TEST_TIMESTAMP}.com`;
 
 // Track created records for cleanup
 const createdRecords: Array<{ type: string; id: string }> = [];
@@ -158,7 +160,7 @@ describe("E2E Attio Lifecycle", () => {
       data: {
         values: {
           name: `${TEST_PREFIX} Test Company`,
-          domains: ["test-e2e-company.com"],
+          domains: [TEST_DOMAIN],
         },
       },
     };
@@ -193,7 +195,7 @@ describe("E2E Attio Lifecycle", () => {
             last_name: `${TEST_PREFIX} Person`,
             full_name: `Test ${TEST_PREFIX} Person`,
           },
-          email_addresses: [{ email_address: "test-e2e@example.com" }],
+          email_addresses: [{ email_address: `test-e2e-${TEST_TIMESTAMP}@example.com` }],
         },
       },
     };

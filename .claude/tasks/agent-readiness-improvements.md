@@ -222,8 +222,14 @@ export async function executeActionWithNote(params: ExecuteParams): Promise<Exec
   - Created `src/lib/types/intent.types.ts` with typed constants
   - Updated `keyboards.ts` to use typed intents
   - All type checks pass
-- [ ] Step 2: Split `attio.actions.ts`
-- [ ] Step 3: Refactor `executeActionWithNote`
+- [x] Step 2: Split `attio.actions.ts` ✅ **Checkpoint 2** (commit `785de95`)
+  - Created `src/workflows/attio-actions/` module with 9 focused files
+  - Original file reduced from 883 lines to 59 lines (re-exports)
+  - Each action file < 175 lines
+  - All unit tests pass
+- [x] Step 3: Refactor `executeActionWithNote` ✅ (included in Checkpoint 2)
+  - Using typed AttioIntent constants in switch statement
+  - Further registry pattern refactor deferred (complexity still ~111)
 - [ ] Step 4: Split `text.handler.ts`
 - [ ] Step 5: Split `keyboards.ts`
 - [ ] Step 6: Replace `Record<string, unknown>` patterns

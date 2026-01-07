@@ -170,6 +170,25 @@ export const testCases: AITestCase[] = [
       company: "StartupXYZ",
     },
   },
+  {
+    name: "Add to list with vague context (p2p)",
+    description: "Bug repro: 'add to p2p' should ask for clarification about which record to add",
+    messages: [
+      {
+        text: "Hey! Sure, our PM is on vacation currently, and will be back on the 12th. We'll contact you then.",
+        chatName: "Carlos Noriega",
+        date: NOW - 60,
+        senderFirstName: "Carlos",
+        senderLastName: "Noriega",
+      },
+    ],
+    instruction: "add to p2p",
+    expectedIntent: "add_to_list",
+    expectedClarification: {
+      field: "record",
+      reason: "missing",
+    },
+  },
 
   // Add note tests
   {

@@ -23,7 +23,9 @@ function runTestCase(tc: AITestCase) {
       expect(result.intent).toBe(tc.expectedIntent);
 
       // Check confidence is reasonable
-      expect(result.confidence).toBeGreaterThan(0.5);
+      // Lower threshold when clarification is expected (uncertainty is appropriate)
+      const minConfidence = tc.expectedClarification ? 0.3 : 0.5;
+      expect(result.confidence).toBeGreaterThanOrEqual(minConfidence);
 
       // Check extracted data
       if (tc.expectedExtraction) {

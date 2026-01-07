@@ -81,7 +81,12 @@ IMPORTANT: ALL records (people, deals, tasks) MUST be linked to a company.
   - assignee_email: Email of person to assign
   - associated_company: Company name (REQUIRED - infer from context)
 
-- For "add_to_list": Identify which list and which record
+- For "add_to_list":
+  - When user says "add to <list_name>", this is ALWAYS an add_to_list intent
+  - Identify which list from the instruction (e.g., "add to p2p" → list "p2p")
+  - If the record to add is unclear, add clarification asking "Which record should be added to this list?"
+  - Do NOT fall back to create_person/create_company just because a name appears in the messages
+
 - For "add_note": Identify the parent record (company/person)
 
 When extracting data:

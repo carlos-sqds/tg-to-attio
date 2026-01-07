@@ -108,7 +108,9 @@ export const ClarificationSchema = z.object({
   field: z.string().describe("The field that needs clarification"),
   question: z.string().describe("The question to ask the user"),
   options: z.array(z.string()).optional().describe("Suggested options if available"),
-  reason: z.enum(["missing", "ambiguous", "multiple_matches", "not_found"]).describe("Why clarification is needed"),
+  reason: z
+    .enum(["missing", "ambiguous", "multiple_matches", "not_found"])
+    .describe("Why clarification is needed"),
 });
 
 export type Clarification = z.infer<typeof ClarificationSchema>;
@@ -119,17 +121,43 @@ export const PrerequisiteActionSchema = z.object({
   reason: z.string().describe("Why this needs to be created first"),
 });
 
+// Helper to coerce malformed array strings from LLM output into proper arrays
+// LLMs sometimes return strings like "[]," or "[]" instead of actual arrays
+const coerceStringArray = z.preprocess((val) => {
+  if (Array.isArray(val)) return val;
+  if (typeof val === "string") {
+    const trimmed = val.trim().replace(/,\s*$/, ""); // Remove trailing comma
+    if (trimmed === "[]" || trimmed === "") return [];
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) return parsed;
+    } catch {
+      // If JSON parse fails, return empty array as fallback
+    }
+  }
+  return [];
+}, z.array(z.string()));
+
 export const SuggestedActionSchema = z.object({
   intent: ActionIntentSchema.describe("The type of action to perform"),
   confidence: z.number().min(0).max(1).describe("Confidence score from 0 to 1"),
   targetObject: z.string().describe("The Attio object type: people, companies, deals, etc."),
   targetList: z.string().optional().describe("The list to add to, if applicable"),
   extractedData: z.record(z.any()).describe("Extracted field values from messages and instruction"),
-  missingRequired: z.array(z.string()).describe("Required fields that are missing"),
-  clarificationsNeeded: z.array(ClarificationSchema).describe("Things that need user clarification"),
-  prerequisiteActions: z.array(PrerequisiteActionSchema).optional().describe("Actions that should be created first, like creating a company before linking a person to it"),
+  missingRequired: coerceStringArray.describe("Required fields that are missing"),
+  clarificationsNeeded: z
+    .array(ClarificationSchema)
+    .describe("Things that need user clarification"),
+  prerequisiteActions: z
+    .array(PrerequisiteActionSchema)
+    .optional()
+    .describe(
+      "Actions that should be created first, like creating a company before linking a person to it"
+    ),
   reasoning: z.string().describe("Brief explanation of why this action was chosen"),
-  noteTitle: z.string().describe("Suggested title for the note that will be created from the forwarded messages"),
+  noteTitle: z
+    .string()
+    .describe("Suggested title for the note that will be created from the forwarded messages"),
 });
 
 // Action result after execution

@@ -28,11 +28,6 @@ export async function handleIdleState(
       `📦 You have ${session.messageQueue.length} message(s) in queue.\n\n` +
         `Use /done ${text} to process them.`
     );
-  } else {
-    await ctx.reply(
-      "💡 Got your instruction. Now forward a message within 2 seconds, " +
-        "or use:\n\n/new " +
-        text
-    );
   }
+  // Otherwise: silent pairing - pending stored, no confirmation message
 }

@@ -183,7 +183,9 @@ export async function executeActionWithNote(
         return { success: false, error: "Could not find target record for note" };
       }
 
-      result = { success: true, recordId: parentRecordId };
+      // Get the parent record's URL
+      const parentUrl = await getRecordUrl(parentObject, parentRecordId);
+      result = { success: true, recordId: parentRecordId, recordUrl: parentUrl };
       break;
     }
 
@@ -198,6 +200,11 @@ export async function executeActionWithNote(
       result = await addToList({ listApiSlug: listSlug, recordId });
       parentObject = action.targetObject as "companies" | "people" | "deals";
       parentRecordId = recordId;
+
+      // Get the record's URL
+      if (result.success && parentObject) {
+        result.recordUrl = await getRecordUrl(parentObject, recordId);
+      }
       break;
     }
 

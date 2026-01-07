@@ -8,6 +8,7 @@ import {
   type WorkspaceMember,
 } from "@/src/services/attio/schema-types";
 import { buildSystemPrompt, buildUserPrompt } from "@/src/ai/prompts";
+import { enforceAddToPattern } from "@/src/lib/ai/add-to-pattern";
 import type { CallerInfo } from "@/src/lib/types/session.types";
 
 const DEFAULT_MODEL = "anthropic/claude-3-5-sonnet-20241022";
@@ -16,6 +17,10 @@ const CHEAP_MODEL = "google/gemini-2.0-flash-lite";
 /**
  * Analyze user intent from forwarded messages and instruction.
  * Uses Vercel AI Gateway with Claude.
+ *
+ * Note: Post-processes AI output with enforceAddToPattern to ensure
+ * "add to X" instructions always ask for clarification, even if the
+ * LLM doesn't follow the prompt instruction.
  */
 export async function analyzeIntent(context: AIContext): Promise<SuggestedAction> {
   const apiKey = process.env.AI_GATEWAY_API_KEY;
@@ -30,7 +35,8 @@ export async function analyzeIntent(context: AIContext): Promise<SuggestedAction
     prompt: buildUserPrompt(context.messages, context.instruction),
   });
 
-  return object;
+  // Apply pattern enforcement as safety net for non-deterministic LLM output
+  return enforceAddToPattern(object, context.instruction);
 }
 
 /**

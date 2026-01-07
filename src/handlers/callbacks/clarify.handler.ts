@@ -2,6 +2,11 @@ import type { Context } from "grammy";
 import { getSession, updateSession } from "@/src/lib/kv/session.kv";
 import { buildClarificationKeyboard } from "@/src/lib/telegram/keyboards";
 import type { Clarification } from "@/src/services/attio/schema-types";
+import {
+  isTargetTypeClarification,
+  isValidTargetType,
+  resolveTargetType,
+} from "@/src/lib/ai/target-resolution";
 
 /**
  * Handle clarify callback.
@@ -91,15 +96,27 @@ export async function handleClarifyOption(ctx: Context, option: string): Promise
       return;
     }
 
-    // Process clarification with AI
     try {
-      const { processClarification } = await import("@/src/workflows/ai.intent");
-      const updatedAction = await processClarification(
-        session.currentAction,
-        currentQuestion.field,
-        option,
-        session.schema
-      );
+      let updatedAction;
+
+      // Special handling for target_type clarification - search for matches
+      if (isTargetTypeClarification(currentQuestion.field) && isValidTargetType(option)) {
+        // Search for matches in the selected type (Company/Person/List)
+        updatedAction = await resolveTargetType(
+          session.currentAction,
+          option,
+          session.currentInstruction || ""
+        );
+      } else {
+        // Standard AI clarification processing
+        const { processClarification } = await import("@/src/workflows/ai.intent");
+        updatedAction = await processClarification(
+          session.currentAction,
+          currentQuestion.field,
+          option,
+          session.schema
+        );
+      }
 
       // Show updated suggestion
       const { buildConfirmationKeyboard, formatSuggestedAction } =
@@ -144,15 +161,27 @@ export async function handleClarifyOption(ctx: Context, option: string): Promise
     return; // Stay in awaiting_clarification state, text handler will pick it up
   }
 
-  // Process clarification with AI
+  // Process clarification
   try {
-    const { processClarification } = await import("@/src/workflows/ai.intent");
-    const updatedAction = await processClarification(
-      session.currentAction,
-      currentQuestion.field,
-      option,
-      session.schema
-    );
+    let updatedAction;
+
+    // Special handling for target_type clarification - search for matches
+    if (isTargetTypeClarification(currentQuestion.field) && isValidTargetType(option)) {
+      updatedAction = await resolveTargetType(
+        session.currentAction,
+        option,
+        session.currentInstruction || ""
+      );
+    } else {
+      // Standard AI clarification processing
+      const { processClarification } = await import("@/src/workflows/ai.intent");
+      updatedAction = await processClarification(
+        session.currentAction,
+        currentQuestion.field,
+        option,
+        session.schema
+      );
+    }
 
     // Check if there are more clarifications
     if (index + 1 < questions.length) {

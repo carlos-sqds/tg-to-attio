@@ -6,6 +6,7 @@ import {
   type AIContext,
 } from "@/src/services/attio/schema-types";
 import { buildSystemPrompt, buildUserPrompt } from "./prompts";
+import { enforceAddToPattern } from "@/src/lib/ai/add-to-pattern";
 
 const DEFAULT_MODEL = "anthropic/claude-3-5-haiku-20241022";
 
@@ -16,6 +17,8 @@ export interface AnalyzeIntentOptions {
 /**
  * Local version for testing - no "use step" directive
  * Can be called directly without Vercel workflow runtime
+ *
+ * Note: Applies enforceAddToPattern as safety net for non-deterministic LLM output.
  */
 export async function analyzeIntentLocal(
   context: AIContext,
@@ -35,7 +38,8 @@ export async function analyzeIntentLocal(
     prompt: buildUserPrompt(context.messages, context.instruction),
   });
 
-  return object;
+  // Apply pattern enforcement as safety net for non-deterministic LLM output
+  return enforceAddToPattern(object, context.instruction);
 }
 
 /**

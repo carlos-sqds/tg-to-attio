@@ -218,7 +218,10 @@ export async function executeActionWithNote(params: ExecuteParams): Promise<Exec
 
 ## Progress Tracking
 
-- [ ] Step 1: Create Intent Type Constants
+- [x] Step 1: Create Intent Type Constants ✅ **Checkpoint 1** (commit `f0863fa`)
+  - Created `src/lib/types/intent.types.ts` with typed constants
+  - Updated `keyboards.ts` to use typed intents
+  - All type checks pass
 - [ ] Step 2: Split `attio.actions.ts`
 - [ ] Step 3: Refactor `executeActionWithNote`
 - [ ] Step 4: Split `text.handler.ts`

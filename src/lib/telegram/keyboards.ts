@@ -2,6 +2,13 @@ import { InlineKeyboard } from "grammy";
 import type { SuggestedAction, WorkspaceMember } from "@/src/services/attio/schema-types";
 import type { SearchResult } from "@/src/lib/types/session.types";
 import { CallbackAction, buildCallbackData } from "@/src/lib/types/callback.types";
+import {
+  AttioIntent,
+  COMPANY_LINKED_INTENTS,
+  INTENT_EMOJIS,
+  INTENT_LABELS,
+  isAttioIntent,
+} from "@/src/lib/types/intent.types";
 
 /**
  * Build confirmation keyboard for AI suggestion.
@@ -24,14 +31,13 @@ export function buildConfirmationKeyboard(
   keyboard.row();
 
   // Add "Change company" for records that link to companies
-  const companyLinkedIntents = ["create_task", "create_person", "create_deal"];
-  if (intent && companyLinkedIntents.includes(intent)) {
+  if (intent && COMPANY_LINKED_INTENTS.includes(intent as AttioIntent)) {
     keyboard.text("🏢 Change company", buildCallbackData(CallbackAction.EDIT_FIELD, "company"));
     keyboard.row();
   }
 
   // Add "Change assignee" for tasks
-  if (intent === "create_task") {
+  if (intent === AttioIntent.CREATE_TASK) {
     keyboard.text("👤 Change assignee", buildCallbackData(CallbackAction.EDIT_FIELD, "assignee"));
     keyboard.row();
   }
@@ -185,22 +191,19 @@ export function buildSearchResultsKeyboard(
  * Returns Markdown-formatted text.
  */
 export function formatSuggestedAction(action: SuggestedAction): string {
-  const intentLabels: Record<string, string> = {
-    create_person: "👤 Create Person",
-    create_company: "🏢 Create Company",
-    create_deal: "💰 Create Deal",
-    create_task: "📋 Create Task",
-    add_note: "📝 Add Note",
-    add_to_list: "📋 Add to List",
+  // Use typed intent constants from intent.types.ts
+  const getIntentLabel = (intent: string): string => {
+    if (isAttioIntent(intent)) {
+      return `${INTENT_EMOJIS[intent]} ${INTENT_LABELS[intent]}`;
+    }
+    return intent;
   };
 
-  const intentEmojis: Record<string, string> = {
-    create_person: "👤",
-    create_company: "🏢",
-    create_deal: "💰",
-    create_task: "📋",
-    add_note: "📝",
-    add_to_list: "📋",
+  const getIntentEmoji = (intent: string): string => {
+    if (isAttioIntent(intent)) {
+      return INTENT_EMOJIS[intent];
+    }
+    return "•";
   };
 
   // Field display configuration
@@ -242,7 +245,7 @@ export function formatSuggestedAction(action: SuggestedAction): string {
     "parent_record_id",
   ]);
 
-  let text = `${intentLabels[action.intent] || action.intent}\n\n`;
+  let text = `${getIntentLabel(action.intent)}\n\n`;
 
   // Collect and sort fields
   const fields: Array<{ key: string; label: string; value: string; priority: number }> = [];
@@ -293,7 +296,7 @@ export function formatSuggestedAction(action: SuggestedAction): string {
   if (action.prerequisiteActions && action.prerequisiteActions.length > 0) {
     text += "\n📦 Will also create:\n";
     for (const prereq of action.prerequisiteActions) {
-      const emoji = intentEmojis[prereq.intent] || "•";
+      const emoji = getIntentEmoji(prereq.intent);
       const name = prereq.extractedData.name || prereq.extractedData.content || "item";
       text += `${emoji} ${String(name)}\n`;
     }

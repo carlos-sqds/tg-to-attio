@@ -13,6 +13,7 @@ import { createTask, parseCompanyInput, parseDeadline } from "./tasks.action";
 import { createNote } from "./notes.action";
 import { addToList } from "./lists.action";
 import { searchRecords } from "./search.action";
+import { executePrerequisites, type PrerequisiteAction } from "./prerequisites.action";
 
 export interface ExecuteActionInput {
   intent: string;
@@ -20,10 +21,7 @@ export interface ExecuteActionInput {
   noteTitle: string;
   targetObject: string;
   targetList?: string;
-  prerequisiteActions?: Array<{
-    intent: string;
-    extractedData: Record<string, unknown>;
-  }>;
+  prerequisiteActions?: PrerequisiteAction[];
   originalInstruction?: string;
   callerEmail?: string;
 }
@@ -36,63 +34,19 @@ export async function executeActionWithNote(
   let parentObject: "companies" | "people" | "deals" = "companies";
   let parentRecordId: string | undefined;
 
-  const createdRecords: Record<string, string> = {};
-  const createdPrerequisites: Array<{ name: string; url?: string }> = [];
+  let createdRecords: Record<string, string> = {};
+  let createdPrerequisites: Array<{ name: string; url?: string }> = [];
 
   const data = action.extractedData;
 
   // Execute prerequisite actions first
   if (action.prerequisiteActions && action.prerequisiteActions.length > 0) {
-    for (const prereq of action.prerequisiteActions) {
-      let prereqResult: ActionResult | null = null;
-
-      switch (prereq.intent) {
-        case AttioIntent.CREATE_COMPANY: {
-          const companyName = String(prereq.extractedData.name || "");
-          if (companyName) {
-            const existingCompanies = await searchRecords("companies", companyName);
-            if (existingCompanies.length > 0) {
-              createdRecords["company"] = existingCompanies[0].id;
-              prereqResult = { success: true, recordId: existingCompanies[0].id };
-            } else {
-              prereqResult = await createCompany({
-                name: companyName,
-                domain: String(prereq.extractedData.domains || prereq.extractedData.domain || ""),
-                location: String(prereq.extractedData.primary_location || ""),
-              });
-              if (prereqResult.success && prereqResult.recordId) {
-                createdRecords["company"] = prereqResult.recordId;
-                createdPrerequisites.push({
-                  name: `🏢 ${companyName}`,
-                  url: prereqResult.recordUrl,
-                });
-              }
-            }
-          }
-          break;
-        }
-        case AttioIntent.CREATE_PERSON: {
-          const personName = String(prereq.extractedData.name || "");
-          prereqResult = await createPerson({
-            name: personName,
-            email: String(prereq.extractedData.email || ""),
-            companyId: createdRecords["company"],
-          });
-          if (prereqResult.success && prereqResult.recordId) {
-            createdRecords["person"] = prereqResult.recordId;
-            createdPrerequisites.push({ name: `👤 ${personName}`, url: prereqResult.recordUrl });
-          }
-          break;
-        }
-      }
-
-      if (prereqResult && !prereqResult.success) {
-        return {
-          success: false,
-          error: `Failed to create prerequisite: ${prereqResult.error}`,
-        };
-      }
+    const prereqResult = await executePrerequisites(action.prerequisiteActions);
+    if (!prereqResult.success) {
+      return { success: false, error: prereqResult.error };
     }
+    createdRecords = prereqResult.createdRecords;
+    createdPrerequisites = prereqResult.createdPrerequisites;
   }
 
   switch (action.intent) {
@@ -183,84 +137,21 @@ export async function executeActionWithNote(
     }
 
     case AttioIntent.CREATE_TASK: {
-      let linkedRecordId = String(data.linked_record_id || "");
-      let linkedRecordObject = String(data.linked_record_object || "");
-      let linkedCompanyUrl: string | undefined;
-
-      if (!linkedRecordId && createdRecords["company"]) {
-        linkedRecordId = createdRecords["company"];
-        linkedRecordObject = "companies";
-        const prereqCompany = createdPrerequisites.find((p) => p.name.startsWith("🏢"));
-        if (prereqCompany?.url) {
-          linkedCompanyUrl = prereqCompany.url;
-        }
-      } else if (!linkedRecordId && createdRecords["person"]) {
-        linkedRecordId = createdRecords["person"];
-        linkedRecordObject = "people";
+      const taskResult = await executeCreateTaskIntent(
+        data,
+        action.originalInstruction,
+        createdRecords,
+        createdPrerequisites
+      );
+      if (taskResult.createdPrerequisites && taskResult.createdPrerequisites.length > 0) {
+        taskResult.createdPrerequisites = [
+          ...createdPrerequisites,
+          ...taskResult.createdPrerequisites,
+        ];
+      } else if (createdPrerequisites.length > 0) {
+        taskResult.createdPrerequisites = createdPrerequisites;
       }
-
-      if (!linkedRecordId) {
-        const associatedCompany = String(data.associated_company || data.company || "");
-        if (associatedCompany) {
-          const parsed = parseCompanyInput(associatedCompany);
-          const companies = await searchRecords("companies", parsed.name);
-          if (companies.length > 0) {
-            linkedRecordId = companies[0].id;
-            linkedRecordObject = "companies";
-            linkedCompanyUrl = await getRecordUrl("companies", companies[0].id);
-          } else {
-            const createResult = await createCompany({
-              name: parsed.name,
-              domain: parsed.domain,
-            });
-            if (createResult.success && createResult.recordId) {
-              linkedRecordId = createResult.recordId;
-              linkedRecordObject = "companies";
-              linkedCompanyUrl = createResult.recordUrl;
-              createdPrerequisites.push({
-                name: parsed.name,
-                url: createResult.recordUrl,
-              });
-            }
-          }
-        }
-      }
-
-      let deadlineValue: unknown = null;
-      if (action.originalInstruction) {
-        const instructionDeadline = parseDeadline(action.originalInstruction);
-        if (instructionDeadline) {
-          deadlineValue = action.originalInstruction;
-        }
-      }
-
-      if (!deadlineValue) {
-        deadlineValue =
-          data.deadline_at ||
-          data.due_date ||
-          data.deadline ||
-          (data as Record<string, unknown>)["due date"] ||
-          data.due ||
-          data.date;
-      }
-
-      result = await createTask({
-        content: String(data.content || data.title || data.task || ""),
-        assigneeId: data.assignee_id ? String(data.assignee_id) : undefined,
-        assigneeEmail: String(data.assignee_email || data.assignee || ""),
-        deadline: deadlineValue,
-        linkedRecordId,
-        linkedRecordObject,
-      });
-
-      if (linkedCompanyUrl) {
-        result.recordUrl = `${linkedCompanyUrl}/tasks`;
-      }
-
-      if (createdPrerequisites.length > 0) {
-        result.createdPrerequisites = createdPrerequisites;
-      }
-      return result;
+      return taskResult;
     }
 
     case AttioIntent.ADD_NOTE: {
@@ -282,10 +173,7 @@ export async function executeActionWithNote(
       }
 
       if (!parentRecordId) {
-        return {
-          success: false,
-          error: "Could not find target record for note",
-        };
+        return { success: false, error: "Could not find target record for note" };
       }
 
       result = { success: true, recordId: parentRecordId };
@@ -297,26 +185,17 @@ export async function executeActionWithNote(
       const recordId = String(data.record_id || "");
 
       if (!listSlug || !recordId) {
-        return {
-          success: false,
-          error: "Missing list or record ID",
-        };
+        return { success: false, error: "Missing list or record ID" };
       }
 
-      result = await addToList({
-        listApiSlug: listSlug,
-        recordId: recordId,
-      });
+      result = await addToList({ listApiSlug: listSlug, recordId });
       parentObject = action.targetObject as "companies" | "people" | "deals";
       parentRecordId = recordId;
       break;
     }
 
     default:
-      return {
-        success: false,
-        error: `Unknown intent: ${action.intent}`,
-      };
+      return { success: false, error: `Unknown intent: ${action.intent}` };
   }
 
   // Always create a note with the original messages
@@ -333,6 +212,79 @@ export async function executeActionWithNote(
   if (createdPrerequisites.length > 0) {
     result.createdPrerequisites = createdPrerequisites;
   }
+
+  return result;
+}
+
+async function executeCreateTaskIntent(
+  data: Record<string, unknown>,
+  originalInstruction: string | undefined,
+  createdRecords: Record<string, string>,
+  createdPrerequisites: Array<{ name: string; url?: string }>
+): Promise<ActionResult> {
+  let linkedRecordId = String(data.linked_record_id || "");
+  let linkedRecordObject = String(data.linked_record_object || "");
+  let linkedCompanyUrl: string | undefined;
+  const taskPrerequisites: Array<{ name: string; url?: string }> = [];
+
+  if (!linkedRecordId && createdRecords["company"]) {
+    linkedRecordId = createdRecords["company"];
+    linkedRecordObject = "companies";
+    const prereqCompany = createdPrerequisites.find((p) => p.name.startsWith("🏢"));
+    if (prereqCompany?.url) linkedCompanyUrl = prereqCompany.url;
+  } else if (!linkedRecordId && createdRecords["person"]) {
+    linkedRecordId = createdRecords["person"];
+    linkedRecordObject = "people";
+  }
+
+  if (!linkedRecordId) {
+    const associatedCompany = String(data.associated_company || data.company || "");
+    if (associatedCompany) {
+      const parsed = parseCompanyInput(associatedCompany);
+      const companies = await searchRecords("companies", parsed.name);
+      if (companies.length > 0) {
+        linkedRecordId = companies[0].id;
+        linkedRecordObject = "companies";
+        linkedCompanyUrl = await getRecordUrl("companies", companies[0].id);
+      } else {
+        const createResult = await createCompany({ name: parsed.name, domain: parsed.domain });
+        if (createResult.success && createResult.recordId) {
+          linkedRecordId = createResult.recordId;
+          linkedRecordObject = "companies";
+          linkedCompanyUrl = createResult.recordUrl;
+          taskPrerequisites.push({ name: parsed.name, url: createResult.recordUrl });
+        }
+      }
+    }
+  }
+
+  let deadlineValue: unknown = null;
+  if (originalInstruction) {
+    const instructionDeadline = parseDeadline(originalInstruction);
+    if (instructionDeadline) deadlineValue = originalInstruction;
+  }
+
+  if (!deadlineValue) {
+    deadlineValue =
+      data.deadline_at ||
+      data.due_date ||
+      data.deadline ||
+      (data as Record<string, unknown>)["due date"] ||
+      data.due ||
+      data.date;
+  }
+
+  const result = await createTask({
+    content: String(data.content || data.title || data.task || ""),
+    assigneeId: data.assignee_id ? String(data.assignee_id) : undefined,
+    assigneeEmail: String(data.assignee_email || data.assignee || ""),
+    deadline: deadlineValue,
+    linkedRecordId,
+    linkedRecordObject,
+  });
+
+  if (linkedCompanyUrl) result.recordUrl = `${linkedCompanyUrl}/tasks`;
+  if (taskPrerequisites.length > 0) result.createdPrerequisites = taskPrerequisites;
 
   return result;
 }

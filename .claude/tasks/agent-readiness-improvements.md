@@ -227,9 +227,11 @@ export async function executeActionWithNote(params: ExecuteParams): Promise<Exec
   - Original file reduced from 883 lines to 59 lines (re-exports)
   - Each action file < 175 lines
   - All unit tests pass
-- [x] Step 3: Refactor `executeActionWithNote` ✅ (included in Checkpoint 2)
+- [x] Step 3: Refactor `executeActionWithNote` ✅ **Checkpoint 5** (final pass)
   - Using typed AttioIntent constants in switch statement
-  - Further registry pattern refactor deferred (complexity still ~111)
+  - Extracted `prerequisites.action.ts` (84 lines) for prerequisite handling
+  - `execute.action.ts` reduced from 338 → 290 lines (now under 300 limit)
+  - Extracted `executeCreateTaskIntent` helper function
 - [x] Step 4: Split `text.handler.ts` ✅ **Checkpoint 3** (commit `79d9865`)
   - Created `src/handlers/messages/text/` module with 6 files
   - Original file reduced from 247 lines to 14 lines
@@ -248,22 +250,24 @@ export async function executeActionWithNote(params: ExecuteParams): Promise<Exec
 | `attio.actions.ts` | 883 lines | 58 lines (re-export) | < 300 | ✅ |
 | `text.handler.ts` | 247 lines | 14 lines (re-export) | < 300 | ✅ |
 | `keyboards.ts` | 316 lines | 22 lines (re-export) | < 300 | ✅ |
-| Largest new file | N/A | 338 lines (`execute.action.ts`) | < 300 | ⚠️ (close) |
+| `execute.action.ts` | 338 lines | 290 lines | < 300 | ✅ |
+| `prerequisites.action.ts` | N/A | 84 lines (new) | < 300 | ✅ |
+| Largest new file | N/A | 290 lines | < 300 | ✅ |
 | Total lint errors | 0 | 0 | 0 | ✅ |
 | Type errors | 0 | 0 | 0 | ✅ |
 
 ## Remaining Items (Future Work)
 
-1. **execute.action.ts** (338 lines, complexity 111) - Could be refactored to registry pattern
-2. **Record<string, unknown>** patterns - 14 instances remain, lower priority
-3. **Test colocation** - Deferred as separate task
+1. **Record<string, unknown>** patterns - 14 instances remain, lower priority
+2. **Test colocation** - Deferred as separate task
+3. **Complexity warnings** - Some functions still have high complexity (lint warnings)
 
 ## Verification Checklist
 
 Before marking complete:
-- [ ] `npm run lint` passes
-- [ ] `npm run type-check` passes
-- [ ] `npm run test:run` passes
-- [ ] All files < 300 lines
-- [ ] All functions < 30 lines
+- [x] `npm run lint` passes (0 errors, warnings only)
+- [x] `npm run type-check` passes
+- [x] `npm run test:run` passes (unit tests - 83 pass)
+- [x] All files < 300 lines
+- [ ] All functions < 30 lines (some complexity warnings remain)
 - [ ] Manual Telegram testing confirms functionality

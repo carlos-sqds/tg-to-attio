@@ -40,6 +40,10 @@ export type { AddToListInput } from "./lists.action";
 // Search operations
 export { searchRecords } from "./search.action";
 
+// Prerequisite operations
+export { executePrerequisites } from "./prerequisites.action";
+export type { PrerequisiteAction, PrerequisiteResult } from "./prerequisites.action";
+
 // Composite operations
 export { executeActionWithNote } from "./execute.action";
 export type { ExecuteActionInput } from "./execute.action";

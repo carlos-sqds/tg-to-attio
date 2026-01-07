@@ -3,6 +3,7 @@ import { getOrCreateSession, updateSession } from "@/src/lib/kv/session.kv";
 import { fetchFullSchemaCached } from "@/src/workflows/attio.schema";
 import { analyzeIntent, resolveAssignee } from "@/src/workflows/ai.intent";
 import { buildConfirmationKeyboard, formatSuggestedAction } from "@/src/lib/telegram/keyboards";
+import { withReactionCycling } from "@/src/lib/telegram/reactions";
 import type { CallerInfo } from "@/src/lib/types/session.types";
 
 /**
@@ -50,50 +51,52 @@ export async function handleDone(ctx: CommandContext<Context>): Promise<void> {
     username: ctx.from?.username,
   };
 
-  // Send processing message
-  const processingMsg = await ctx.reply("🤔 Analyzing...");
-
   try {
-    // Fetch schema if needed
-    let schema = session.schema;
-    if (!schema) {
-      schema = await fetchFullSchemaCached();
-    }
+    // Use reaction cycling while analyzing
+    const { suggestedAction, schema } = await withReactionCycling(ctx, async () => {
+      // Fetch schema if needed
+      let schemaData = session.schema;
+      if (!schemaData) {
+        schemaData = await fetchFullSchemaCached();
+      }
 
-    // Analyze intent
-    const suggestedAction = await analyzeIntent({
-      messages: session.messageQueue.map((m) => ({
-        text: m.text,
-        senderUsername: m.senderUsername,
-        senderFirstName: m.senderFirstName,
-        senderLastName: m.senderLastName,
-        chatName: m.chatName,
-        date: m.date,
-      })),
-      instruction,
-      schema,
-    });
+      // Analyze intent
+      const action = await analyzeIntent({
+        messages: session.messageQueue.map((m) => ({
+          text: m.text,
+          senderUsername: m.senderUsername,
+          senderFirstName: m.senderFirstName,
+          senderLastName: m.senderLastName,
+          chatName: m.chatName,
+          date: m.date,
+        })),
+        instruction,
+        schema: schemaData,
+      });
 
-    // Resolve assignee for tasks
-    if (suggestedAction.intent === "create_task") {
-      const assigneeName = String(
-        suggestedAction.extractedData.assignee || suggestedAction.extractedData.assignee_name || ""
-      );
-
-      if (assigneeName || callerInfo) {
-        const resolved = await resolveAssignee(
-          assigneeName,
-          callerInfo,
-          schema.workspaceMembers,
-          true // Default to caller if no assignee specified
+      // Resolve assignee for tasks
+      if (action.intent === "create_task") {
+        const assigneeName = String(
+          action.extractedData.assignee || action.extractedData.assignee_name || ""
         );
 
-        if (resolved) {
-          suggestedAction.extractedData.assignee_id = resolved.memberId;
-          suggestedAction.extractedData.assignee = resolved.memberName;
+        if (assigneeName || callerInfo) {
+          const resolved = await resolveAssignee(
+            assigneeName,
+            callerInfo,
+            schemaData.workspaceMembers,
+            true // Default to caller if no assignee specified
+          );
+
+          if (resolved) {
+            action.extractedData.assignee_id = resolved.memberId;
+            action.extractedData.assignee = resolved.memberName;
+          }
         }
       }
-    }
+
+      return { suggestedAction: action, schema: schemaData };
+    });
 
     // Format and send suggestion
     const suggestionText = formatSuggestedAction(suggestedAction);
@@ -102,8 +105,8 @@ export async function handleDone(ctx: CommandContext<Context>): Promise<void> {
       suggestedAction.intent
     );
 
-    // Edit processing message with suggestion
-    await ctx.api.editMessageText(chatId, processingMsg.message_id, suggestionText, {
+    // Send suggestion as new message
+    const suggestionMsg = await ctx.reply(suggestionText, {
       reply_markup: keyboard,
     });
 
@@ -118,14 +121,10 @@ export async function handleDone(ctx: CommandContext<Context>): Promise<void> {
       callerInfo,
       initiatingUserId: userId,
       schema,
-      lastBotMessageId: processingMsg.message_id,
+      lastBotMessageId: suggestionMsg.message_id,
     });
   } catch (error) {
     console.error("[DONE] Error analyzing intent:", error);
-    await ctx.api.editMessageText(
-      chatId,
-      processingMsg.message_id,
-      `❌ Error: ${error instanceof Error ? error.message : "Failed to analyze"}`
-    );
+    await ctx.reply(`❌ Error: ${error instanceof Error ? error.message : "Failed to analyze"}`);
   }
 }

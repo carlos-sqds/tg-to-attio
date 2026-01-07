@@ -1,6 +1,7 @@
 import type { Context } from "grammy";
 import { getOrCreateSession, updateSession } from "@/src/lib/kv/session.kv";
 import { getPending, clearPending } from "@/src/lib/kv/pending.kv";
+import { setReaction, removeReaction } from "@/src/lib/telegram/reactions";
 import type { ForwardedMessageData } from "@/src/types";
 
 /**
@@ -89,11 +90,11 @@ export async function handleForward(ctx: Context): Promise<void> {
       state: { type: "gathering_messages" },
     });
 
+    const messageId = ctx.message?.message_id;
+
     // React to show we received it
-    try {
-      await ctx.react("👀");
-    } catch {
-      // Ignore reaction errors
+    if (messageId) {
+      await setReaction(ctx.api, chatId, messageId, "👀");
     }
 
     // Reply with processing hint
@@ -102,6 +103,11 @@ export async function handleForward(ctx: Context): Promise<void> {
         `Instruction: "${pending.text}"\n` +
         `Use /done to process, or forward more messages.`
     );
+
+    // Remove reaction after reply
+    if (messageId) {
+      await removeReaction(ctx.api, chatId, messageId);
+    }
   } else {
     // Just add to queue
     await updateSession(chatId, userId, {
@@ -109,11 +115,11 @@ export async function handleForward(ctx: Context): Promise<void> {
       state: { type: "gathering_messages" },
     });
 
+    const messageId = ctx.message?.message_id;
+
     // React to show we received it
-    try {
-      await ctx.react("👀");
-    } catch {
-      // Ignore reaction errors
+    if (messageId) {
+      await setReaction(ctx.api, chatId, messageId, "👀");
     }
 
     // Show queue status
@@ -122,5 +128,10 @@ export async function handleForward(ctx: Context): Promise<void> {
         `When ready:\n` +
         `/done <instruction>`
     );
+
+    // Remove reaction after reply
+    if (messageId) {
+      await removeReaction(ctx.api, chatId, messageId);
+    }
   }
 }

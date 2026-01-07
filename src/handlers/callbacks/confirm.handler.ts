@@ -139,7 +139,7 @@ export async function handleSkip(ctx: Context): Promise<void> {
     await import("@/src/lib/telegram/keyboards");
 
   const suggestionText = formatSuggestedAction(session.currentAction);
-  const keyboard = buildConfirmationKeyboard(false, session.currentAction.intent);
+  const keyboard = buildConfirmationKeyboard([], session.currentAction.intent);
 
   await ctx.editMessageText(suggestionText, { reply_markup: keyboard });
 

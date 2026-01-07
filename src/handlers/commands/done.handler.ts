@@ -98,7 +98,7 @@ export async function handleDone(ctx: CommandContext<Context>): Promise<void> {
     // Format and send suggestion
     const suggestionText = formatSuggestedAction(suggestedAction);
     const keyboard = buildConfirmationKeyboard(
-      suggestedAction.clarificationsNeeded.length > 0,
+      suggestedAction.clarificationsNeeded,
       suggestedAction.intent
     );
 

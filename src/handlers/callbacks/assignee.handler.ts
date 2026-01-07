@@ -47,7 +47,7 @@ export async function handleAssigneeSelect(ctx: Context, memberId: string): Prom
   };
 
   const suggestionText = formatSuggestedAction(updatedAction);
-  const keyboard = buildConfirmationKeyboard(false, updatedAction.intent);
+  const keyboard = buildConfirmationKeyboard([], updatedAction.intent);
 
   await ctx.editMessageText(suggestionText, { reply_markup: keyboard });
 
@@ -159,7 +159,7 @@ export async function handleAssigneeSkip(ctx: Context): Promise<void> {
   };
 
   const suggestionText = formatSuggestedAction(updatedAction);
-  const keyboard = buildConfirmationKeyboard(false, updatedAction.intent);
+  const keyboard = buildConfirmationKeyboard([], updatedAction.intent);
 
   await ctx.editMessageText(suggestionText, { reply_markup: keyboard });
 

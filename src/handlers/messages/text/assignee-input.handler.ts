@@ -40,7 +40,7 @@ export async function handleAssigneeInputState(
     };
 
     const suggestionText = formatSuggestedAction(updatedAction);
-    const keyboard = buildConfirmationKeyboard(false, updatedAction.intent);
+    const keyboard = buildConfirmationKeyboard([], updatedAction.intent);
 
     await ctx.reply(`✅ Assignee set to ${resolved.memberName}\n\n${suggestionText}`, {
       reply_markup: keyboard,

@@ -5,21 +5,43 @@
 import { InlineKeyboard } from "grammy";
 import { CallbackAction, buildCallbackData } from "@/src/lib/types/callback.types";
 import { AttioIntent, COMPANY_LINKED_INTENTS } from "@/src/lib/types/intent.types";
+import type { Clarification } from "@/src/services/attio/schema-types";
 
 /**
  * Build confirmation keyboard for AI suggestion.
- * Shows confirm/edit or confirm/clarify based on state.
+ *
+ * When clarifications have options (e.g., "List", "Company", "Person"),
+ * show them as inline buttons instead of hiding behind "Answer questions".
  */
 export function buildConfirmationKeyboard(
-  hasClarifications: boolean,
+  clarifications: Clarification[],
   intent?: string
 ): InlineKeyboard {
   const keyboard = new InlineKeyboard();
+  const firstClarification = clarifications[0];
+  const hasOptions = firstClarification?.options && firstClarification.options.length > 0;
 
-  if (hasClarifications) {
-    keyboard
-      .text("✅ Create anyway", CallbackAction.CONFIRM)
-      .text("💬 Answer questions", CallbackAction.CLARIFY);
+  // If we have clarifications with options, show them inline
+  if (hasOptions && firstClarification.options) {
+    // Add inline option buttons (max 3 per row for readability)
+    const options = firstClarification.options.slice(0, 6);
+    for (let i = 0; i < options.length; i++) {
+      keyboard.text(options[i], buildCallbackData(CallbackAction.CLARIFY_OPTION, options[i]));
+      // New row after every 3 buttons
+      if ((i + 1) % 3 === 0 && i < options.length - 1) {
+        keyboard.row();
+      }
+    }
+    keyboard.row();
+  }
+
+  // Show confirm button
+  if (clarifications.length > 0) {
+    keyboard.text("✅ Create anyway", CallbackAction.CONFIRM);
+    // If clarifications but no predefined options, show "Answer questions"
+    if (!hasOptions) {
+      keyboard.text("💬 Answer questions", CallbackAction.CLARIFY);
+    }
   } else {
     keyboard.text("✅ Create", CallbackAction.CONFIRM).text("✏️ Edit", CallbackAction.EDIT);
   }

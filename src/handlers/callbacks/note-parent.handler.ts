@@ -115,7 +115,7 @@ export async function handleNoteParentSelect(ctx: Context, recordId: string): Pr
   };
 
   const suggestionText = formatSuggestedAction(updatedAction);
-  const keyboard = buildConfirmationKeyboard(false, updatedAction.intent);
+  const keyboard = buildConfirmationKeyboard([], updatedAction.intent);
 
   await ctx.editMessageText(suggestionText, { reply_markup: keyboard });
 

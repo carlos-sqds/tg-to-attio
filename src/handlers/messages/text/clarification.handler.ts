@@ -59,7 +59,7 @@ export async function handleClarificationState(
     } else {
       // All clarifications answered, show updated suggestion
       const suggestionText = formatSuggestedAction(updatedAction);
-      const keyboard = buildConfirmationKeyboard(false, updatedAction.intent);
+      const keyboard = buildConfirmationKeyboard([], updatedAction.intent);
 
       await ctx.reply(suggestionText, { reply_markup: keyboard });
 

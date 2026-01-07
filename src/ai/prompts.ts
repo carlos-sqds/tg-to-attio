@@ -59,6 +59,14 @@ Analyze the provided messages and instruction to:
 
 ## Guidelines
 
+CRITICAL - "add to X" pattern:
+When the instruction starts with "add to <name>" (e.g., "add to p2p", "add to acme"):
+- This is NOT a create_person or create_company intent
+- The "<name>" could be a list, company, or person to add content TO
+- You MUST ask for clarification: "Is '<name>' a list, company, or person?"
+- Use intent "add_note" with clarification field "target_type" reason "ambiguous"
+- Include options: ["List", "Company", "Person"]
+
 IMPORTANT: ALL records (people, deals, tasks) MUST be linked to a company.
 - Always try to infer the company from context (chat name, mentioned companies, sender info, email domain)
 - If a company is inferred but may not exist, add it as a prerequisiteAction with intent "create_company"
@@ -81,11 +89,15 @@ IMPORTANT: ALL records (people, deals, tasks) MUST be linked to a company.
   - assignee_email: Email of person to assign
   - associated_company: Company name (REQUIRED - infer from context)
 
-- For "add_to_list":
-  - When user says "add to <list_name>", this is ALWAYS an add_to_list intent
-  - Identify which list from the instruction (e.g., "add to p2p" → list "p2p")
-  - If the record to add is unclear, add clarification asking "Which record should be added to this list?"
-  - Do NOT fall back to create_person/create_company just because a name appears in the messages
+- For "add to <name>" instructions:
+  - The name could refer to a LIST, COMPANY, or PERSON - check all possibilities
+  - If the name matches a known list, use "add_to_list" intent
+  - If the name matches/could be a company, use "add_note" with the company as parent
+  - If ambiguous (name could be list OR company OR person), add clarification asking:
+    "Is '<name>' a list, company, or person?" with options ["List", "Company", "Person"]
+  - Set the clarification field to "target_type" with reason "ambiguous"
+
+- For "add_to_list": Identify which list and which record to add
 
 - For "add_note": Identify the parent record (company/person)
 

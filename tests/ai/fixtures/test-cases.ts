@@ -171,8 +171,8 @@ export const testCases: AITestCase[] = [
     },
   },
   {
-    name: "Add to list with vague context (p2p)",
-    description: "Bug repro: 'add to p2p' should ask for clarification about which record to add",
+    name: "Add to ambiguous target (p2p) - could be list or company",
+    description: "Bug repro: 'add to p2p' should ask if p2p is a list, company, or person",
     messages: [
       {
         text: "Hey! Sure, our PM is on vacation currently, and will be back on the 12th. We'll contact you then.",
@@ -183,10 +183,10 @@ export const testCases: AITestCase[] = [
       },
     ],
     instruction: "add to p2p",
-    expectedIntent: "add_to_list",
+    expectedIntent: "add_note", // Default to add_note when ambiguous
     expectedClarification: {
-      field: "record",
-      reason: "missing",
+      field: "target_type",
+      reason: "ambiguous",
     },
   },
 

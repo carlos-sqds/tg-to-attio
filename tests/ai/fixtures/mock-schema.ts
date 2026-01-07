@@ -258,16 +258,6 @@ export const mockSchema: AttioSchema = {
       workspaceMemberAccess: "full-access",
       attributes: [],
     },
-    {
-      id: "list-p2p",
-      apiSlug: "p2p",
-      name: "P2P (Person to Person)",
-      parentObject: "people",
-      parentObjectId: "obj-people",
-      createdAt: "2024-01-01T00:00:00Z",
-      workspaceMemberAccess: "full-access",
-      attributes: [],
-    },
   ],
   workspaceMembers: [
     {

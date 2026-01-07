@@ -1,4 +1,18 @@
 {
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/copy-plan-path.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  },
   "mcpServers": {
     "factory-docs": {
       "type": "http",

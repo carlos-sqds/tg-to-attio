@@ -10,6 +10,8 @@ import {
   isTargetTypeClarification,
   isValidTargetType,
   resolveTargetType,
+  isSelectionClarification,
+  resolveSelection,
 } from "@/src/lib/ai/target-resolution";
 import type { SuggestedAction } from "@/src/services/attio/schema-types";
 
@@ -210,5 +212,134 @@ describe("resolveTargetType", () => {
 
     expect(mockSearchRecords).not.toHaveBeenCalled();
     expect(result).toEqual(action);
+  });
+});
+
+describe("isSelectionClarification", () => {
+  it("returns true for selection fields", () => {
+    expect(isSelectionClarification("company_selection")).toBe(true);
+    expect(isSelectionClarification("person_selection")).toBe(true);
+    expect(isSelectionClarification("list_selection")).toBe(true);
+  });
+
+  it("returns false for other fields", () => {
+    expect(isSelectionClarification("target_type")).toBe(false);
+    expect(isSelectionClarification("company")).toBe(false);
+    expect(isSelectionClarification("company_name")).toBe(false);
+  });
+});
+
+describe("resolveSelection", () => {
+  it("maps company selection to extractedData.company and parent_record_id", () => {
+    const action = createAction({
+      clarificationsNeeded: [
+        {
+          field: "company_selection",
+          question: 'Which company is "p2p"?',
+          options: ["P2P Staking", "P2P Labs"],
+          reason: "multiple_matches",
+        },
+      ],
+      extractedData: {
+        target_type: "company",
+        search_results: [
+          { id: "123", name: "P2P Staking", extra: "p2p.org" },
+          { id: "456", name: "P2P Labs", extra: "p2plabs.io" },
+        ],
+      },
+    });
+
+    const result = resolveSelection(action, "company_selection", "P2P Staking");
+
+    expect(result.extractedData.company).toBe("P2P Staking");
+    expect(result.extractedData.parent_record_id).toBe("123");
+    expect(result.extractedData.parent_object).toBe("companies");
+    expect(result.extractedData.search_results).toBeUndefined();
+    expect(result.clarificationsNeeded).toHaveLength(0);
+  });
+
+  it("maps person selection to extractedData.person and parent_record_id", () => {
+    const action = createAction({
+      clarificationsNeeded: [
+        {
+          field: "person_selection",
+          question: 'Which person is "john"?',
+          options: ["John Smith"],
+          reason: "multiple_matches",
+        },
+      ],
+      extractedData: {
+        target_type: "person",
+        search_results: [{ id: "789", name: "John Smith" }],
+      },
+    });
+
+    const result = resolveSelection(action, "person_selection", "John Smith");
+
+    expect(result.extractedData.person).toBe("John Smith");
+    expect(result.extractedData.parent_record_id).toBe("789");
+    expect(result.extractedData.parent_object).toBe("people");
+  });
+
+  it("maps list selection to extractedData.list and list_id", () => {
+    const action = createAction({
+      clarificationsNeeded: [
+        {
+          field: "list_selection",
+          question: 'Which list is "partners"?',
+          options: ["Partners List"],
+          reason: "multiple_matches",
+        },
+      ],
+      extractedData: {
+        target_type: "list",
+        search_results: [{ id: "list-1", name: "Partners List" }],
+      },
+    });
+
+    const result = resolveSelection(action, "list_selection", "Partners List");
+
+    expect(result.extractedData.list).toBe("Partners List");
+    expect(result.extractedData.list_id).toBe("list-1");
+  });
+
+  it("handles case-insensitive name matching", () => {
+    const action = createAction({
+      clarificationsNeeded: [
+        {
+          field: "company_selection",
+          question: "Which company?",
+          options: ["P2P Staking"],
+          reason: "multiple_matches",
+        },
+      ],
+      extractedData: {
+        search_results: [{ id: "123", name: "P2P Staking" }],
+      },
+    });
+
+    const result = resolveSelection(action, "company_selection", "p2p staking");
+
+    expect(result.extractedData.company).toBe("p2p staking");
+    expect(result.extractedData.parent_record_id).toBe("123");
+  });
+
+  it("works when search_results is missing", () => {
+    const action = createAction({
+      clarificationsNeeded: [
+        {
+          field: "company_selection",
+          question: "Which company?",
+          options: ["P2P Staking"],
+          reason: "multiple_matches",
+        },
+      ],
+      extractedData: {},
+    });
+
+    const result = resolveSelection(action, "company_selection", "P2P Staking");
+
+    expect(result.extractedData.company).toBe("P2P Staking");
+    expect(result.extractedData.parent_record_id).toBeUndefined();
   });
 });

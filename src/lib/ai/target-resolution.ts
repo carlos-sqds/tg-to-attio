@@ -122,3 +122,76 @@ export function isValidTargetType(option: string): boolean {
   const normalized = option.toLowerCase();
   return ["company", "person", "list"].includes(normalized);
 }
+
+/**
+ * Selection clarification fields that need special handling.
+ */
+const SELECTION_FIELDS = ["company_selection", "person_selection", "list_selection"];
+
+/**
+ * Check if this is a selection clarification (user picking from search results).
+ */
+export function isSelectionClarification(field: string): boolean {
+  return SELECTION_FIELDS.includes(field);
+}
+
+/**
+ * Process selection clarification response.
+ *
+ * When user selects a company/person/list from search results,
+ * map the selection to the appropriate extracted data fields.
+ *
+ * @param action - Current suggested action
+ * @param field - The clarification field (company_selection, person_selection, list_selection)
+ * @param selectedName - The name user selected
+ * @returns Updated action with proper extracted data
+ */
+export function resolveSelection(
+  action: SuggestedAction,
+  field: string,
+  selectedName: string
+): SuggestedAction {
+  // Get stored search results
+  const searchResults = action.extractedData.search_results as
+    | Array<{ id: string; name: string; extra?: string }>
+    | undefined;
+
+  // Find the selected record in search results
+  const selectedRecord = searchResults?.find(
+    (r) => r.name.toLowerCase() === selectedName.toLowerCase()
+  );
+
+  // Remove the selection clarification
+  const remainingClarifications = action.clarificationsNeeded.filter((c) => c.field !== field);
+
+  // Map to appropriate extracted data based on field type
+  const updatedData = { ...action.extractedData };
+
+  if (field === "company_selection") {
+    updatedData.company = selectedName;
+    if (selectedRecord) {
+      updatedData.parent_record_id = selectedRecord.id;
+      updatedData.parent_object = "companies";
+    }
+  } else if (field === "person_selection") {
+    updatedData.person = selectedName;
+    if (selectedRecord) {
+      updatedData.parent_record_id = selectedRecord.id;
+      updatedData.parent_object = "people";
+    }
+  } else if (field === "list_selection") {
+    updatedData.list = selectedName;
+    if (selectedRecord) {
+      updatedData.list_id = selectedRecord.id;
+    }
+  }
+
+  // Clean up internal fields
+  delete updatedData.search_results;
+
+  return {
+    ...action,
+    extractedData: updatedData,
+    clarificationsNeeded: remainingClarifications,
+  };
+}

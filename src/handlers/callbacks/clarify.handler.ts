@@ -6,6 +6,8 @@ import {
   isTargetTypeClarification,
   isValidTargetType,
   resolveTargetType,
+  isSelectionClarification,
+  resolveSelection,
 } from "@/src/lib/ai/target-resolution";
 
 /**
@@ -107,6 +109,9 @@ export async function handleClarifyOption(ctx: Context, option: string): Promise
           option,
           session.currentInstruction || ""
         );
+      } else if (isSelectionClarification(currentQuestion.field)) {
+        // User selected from search results - map to extracted data
+        updatedAction = resolveSelection(session.currentAction, currentQuestion.field, option);
       } else {
         // Standard AI clarification processing
         const { processClarification } = await import("@/src/workflows/ai.intent");
@@ -172,6 +177,9 @@ export async function handleClarifyOption(ctx: Context, option: string): Promise
         option,
         session.currentInstruction || ""
       );
+    } else if (isSelectionClarification(currentQuestion.field)) {
+      // User selected from search results - map to extracted data
+      updatedAction = resolveSelection(session.currentAction, currentQuestion.field, option);
     } else {
       // Standard AI clarification processing
       const { processClarification } = await import("@/src/workflows/ai.intent");

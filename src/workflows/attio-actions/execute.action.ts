@@ -155,20 +155,27 @@ export async function executeActionWithNote(
     }
 
     case AttioIntent.ADD_NOTE: {
-      const targetCompany = String(data.company || data.associated_company || "");
-      const targetPerson = String(data.person || "");
+      // Check if we already have the record ID from selection flow
+      if (data.parent_record_id && data.parent_object) {
+        parentObject = data.parent_object as "companies" | "people" | "deals";
+        parentRecordId = String(data.parent_record_id);
+      } else {
+        // Fall back to search
+        const targetCompany = String(data.company || data.associated_company || "");
+        const targetPerson = String(data.person || "");
 
-      if (targetCompany) {
-        const companies = await searchRecords("companies", targetCompany);
-        if (companies.length > 0) {
-          parentObject = "companies";
-          parentRecordId = companies[0].id;
-        }
-      } else if (targetPerson) {
-        const people = await searchRecords("people", targetPerson);
-        if (people.length > 0) {
-          parentObject = "people";
-          parentRecordId = people[0].id;
+        if (targetCompany) {
+          const companies = await searchRecords("companies", targetCompany);
+          if (companies.length > 0) {
+            parentObject = "companies";
+            parentRecordId = companies[0].id;
+          }
+        } else if (targetPerson) {
+          const people = await searchRecords("people", targetPerson);
+          if (people.length > 0) {
+            parentObject = "people";
+            parentRecordId = people[0].id;
+          }
         }
       }
 

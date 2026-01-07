@@ -230,10 +230,33 @@ export async function executeActionWithNote(params: ExecuteParams): Promise<Exec
 - [x] Step 3: Refactor `executeActionWithNote` ✅ (included in Checkpoint 2)
   - Using typed AttioIntent constants in switch statement
   - Further registry pattern refactor deferred (complexity still ~111)
-- [ ] Step 4: Split `text.handler.ts`
-- [ ] Step 5: Split `keyboards.ts`
-- [ ] Step 6: Replace `Record<string, unknown>` patterns
-- [ ] Final verification: All checks pass
+- [x] Step 4: Split `text.handler.ts` ✅ **Checkpoint 3** (commit `79d9865`)
+  - Created `src/handlers/messages/text/` module with 6 files
+  - Original file reduced from 247 lines to 14 lines
+  - Each handler ~38-78 lines
+- [x] Step 5: Split `keyboards.ts` ✅ **Checkpoint 4** (commit `0f6595a`)
+  - Created `src/lib/telegram/keyboards/` module with 6 files
+  - Original file reduced from 316 lines to 22 lines
+  - Each keyboard builder ~26-152 lines
+- [ ] Step 6: Replace `Record<string, unknown>` patterns (deferred - lower priority)
+- [x] Final verification: All checks pass ✅
+
+## Final Results
+
+| Metric | Before | After | Target | Status |
+|--------|--------|-------|--------|--------|
+| `attio.actions.ts` | 883 lines | 58 lines (re-export) | < 300 | ✅ |
+| `text.handler.ts` | 247 lines | 14 lines (re-export) | < 300 | ✅ |
+| `keyboards.ts` | 316 lines | 22 lines (re-export) | < 300 | ✅ |
+| Largest new file | N/A | 338 lines (`execute.action.ts`) | < 300 | ⚠️ (close) |
+| Total lint errors | 0 | 0 | 0 | ✅ |
+| Type errors | 0 | 0 | 0 | ✅ |
+
+## Remaining Items (Future Work)
+
+1. **execute.action.ts** (338 lines, complexity 111) - Could be refactored to registry pattern
+2. **Record<string, unknown>** patterns - 14 instances remain, lower priority
+3. **Test colocation** - Deferred as separate task
 
 ## Verification Checklist
 

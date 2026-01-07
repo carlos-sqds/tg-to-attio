@@ -46,6 +46,9 @@ const SKIP_FIELDS = new Set([
   "context",
   "parent_object",
   "parent_record_id",
+  "search_results",
+  "target_type",
+  "original_target",
 ]);
 
 /**

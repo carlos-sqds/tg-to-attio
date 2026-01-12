@@ -20,6 +20,9 @@ import {
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
 
+// Import searchRecords for spying in executeActionWithNote tests
+import * as searchActionModule from "@/src/workflows/attio-actions/search.action";
+
 describe("Attio Actions", () => {
   beforeEach(() => {
     vi.stubEnv("ATTIO_API_KEY", "test-api-key");
@@ -404,33 +407,52 @@ describe("Attio Actions", () => {
     });
 
     it("handles records with missing record_text", async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            data: [
-              {
-                id: { record_id: "company-1" },
-                object_slug: "companies",
-                record_text: "",
-              },
-            ],
-          }),
+      // Use mockResolvedValue (not Once) because searchRecords makes multiple API calls
+      // for fuzzy matching (domain variations). First call returns the data, rest empty.
+      // Include matching domain so record passes relevance filtering.
+      let callCount = 0;
+      mockFetch.mockImplementation(() => {
+        callCount++;
+        if (callCount === 1) {
+          return Promise.resolve({
+            ok: true,
+            json: () =>
+              Promise.resolve({
+                data: [
+                  {
+                    id: { record_id: "company-1" },
+                    object_slug: "companies",
+                    record_text: "",
+                    domains: ["test.com"], // Include domain so it passes relevance filtering
+                  },
+                ],
+              }),
+          });
+        }
+        // Subsequent calls return empty
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ data: [] }),
+        });
       });
 
       const results = await searchRecords("companies", "Test");
 
+      // Record with empty record_text should get name: "Unknown"
       expect(results[0].name).toBe("Unknown");
+      expect(results[0].extra).toBe("test.com");
     });
 
     it("uses the search endpoint with correct request body", async () => {
-      mockFetch.mockResolvedValueOnce({
+      // Use mockResolvedValue because searchRecords makes multiple API calls for fuzzy matching
+      mockFetch.mockResolvedValue({
         ok: true,
         json: () => Promise.resolve({ data: [] }),
       });
 
       await searchRecords("companies", "TechCorp");
 
+      // First call should have correct structure
       const [url, options] = mockFetch.mock.calls[0];
       expect(url).toContain("/objects/records/search");
 
@@ -500,11 +522,9 @@ describe("Attio Actions", () => {
     });
 
     it("executes prerequisite actions before main action", async () => {
-      // Search for existing company (returns empty - not found)
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve({ data: [] }),
-      });
+      // Spy on searchRecords to return empty (company not found)
+      const searchSpy = vi.spyOn(searchActionModule, "searchRecords").mockResolvedValue([]);
+
       // Create company (prerequisite)
       mockSuccessResponse({
         id: { record_id: "company-prereq" },
@@ -539,23 +559,15 @@ describe("Attio Actions", () => {
       expect(result.success).toBe(true);
       expect(result.createdPrerequisites).toHaveLength(1);
       expect(result.createdPrerequisites![0].name).toContain("Acme Inc");
+      searchSpy.mockRestore();
     });
 
     it("reuses existing company in prerequisite actions", async () => {
-      // Search for existing company (returns existing company)
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            data: [
-              {
-                id: { record_id: "existing-company-123" },
-                object_slug: "companies",
-                record_text: "Acme Inc",
-              },
-            ],
-          }),
-      });
+      // Spy on searchRecords to return existing company
+      const searchSpy = vi
+        .spyOn(searchActionModule, "searchRecords")
+        .mockResolvedValue([{ id: "existing-company-123", name: "Acme Inc" }]);
+
       // Create person (main) - no company creation needed
       mockSuccessResponse({
         id: { record_id: "person-123" },
@@ -585,8 +597,9 @@ describe("Attio Actions", () => {
       expect(result.success).toBe(true);
       // Should NOT have created prerequisites since company already existed
       expect(result.createdPrerequisites).toBeUndefined();
-      // Should have made 3 calls: search, create person, create note (no create company)
-      expect(mockFetch).toHaveBeenCalledTimes(3);
+      // Should have made 2 calls: create person, create note (no create company, search is mocked)
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      searchSpy.mockRestore();
     });
 
     it("returns error for unknown intent", async () => {
@@ -626,19 +639,13 @@ describe("Attio Actions", () => {
     });
 
     it("handles create_deal intent with company search", async () => {
-      // Search for company (response needs values object)
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            data: [
-              {
-                id: { record_id: "found-company" },
-                values: { name: [{ value: "Acme Corp" }] },
-              },
-            ],
-          }),
-      });
+      // Spy on searchRecords to return found company
+      const searchSpy = vi
+        .spyOn(searchActionModule, "searchRecords")
+        .mockResolvedValue([{ id: "found-company", name: "Acme Corp" }]);
+
+      // Fetch deal stages
+      mockDealStagesResponse();
       // Create deal
       mockSuccessResponse({
         id: { record_id: "deal-123" },
@@ -662,6 +669,7 @@ describe("Attio Actions", () => {
       );
 
       expect(result.success).toBe(true);
+      searchSpy.mockRestore();
     });
 
     it("handles create_task intent", async () => {
@@ -682,11 +690,11 @@ describe("Attio Actions", () => {
     });
 
     it("uses search endpoint for company lookup in create_deal", async () => {
-      // Search for company using search endpoint
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve({ data: [] }),
-      });
+      // Spy on searchRecords to return empty (no company found)
+      const searchSpy = vi.spyOn(searchActionModule, "searchRecords").mockResolvedValue([]);
+
+      // Fetch deal stages
+      mockDealStagesResponse();
       // Create deal
       mockSuccessResponse({
         id: { record_id: "deal-123" },
@@ -708,29 +716,17 @@ describe("Attio Actions", () => {
         "Content"
       );
 
-      // First call should be the company search using search endpoint
-      const [url, options] = mockFetch.mock.calls[0];
-      expect(url).toContain("/objects/records/search");
-      const searchBody = JSON.parse(options.body);
-      expect(searchBody.query).toBe("TechCorp");
-      expect(searchBody.objects).toEqual(["companies"]);
+      // Verify searchRecords was called with expected args
+      expect(searchSpy).toHaveBeenCalledWith("companies", "TechCorp");
+      searchSpy.mockRestore();
     });
 
     it("uses search endpoint for company lookup in create_person", async () => {
-      // Search for company using search endpoint
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            data: [
-              {
-                id: { record_id: "company-1" },
-                object_slug: "companies",
-                record_text: "Acme Corp",
-              },
-            ],
-          }),
-      });
+      // Spy on searchRecords to return found company
+      const searchSpy = vi
+        .spyOn(searchActionModule, "searchRecords")
+        .mockResolvedValue([{ id: "company-1", name: "Acme Corp" }]);
+
       // Create person
       mockSuccessResponse({
         id: { record_id: "person-123" },
@@ -752,27 +748,23 @@ describe("Attio Actions", () => {
         "Content"
       );
 
-      // First call should be the company search using search endpoint
-      const [url, options] = mockFetch.mock.calls[0];
-      expect(url).toContain("/objects/records/search");
-      const searchBody = JSON.parse(options.body);
-      expect(searchBody.query).toBe("Acme");
-      expect(searchBody.objects).toEqual(["companies"]);
+      // Verify searchRecords was called with expected args
+      expect(searchSpy).toHaveBeenCalledWith("companies", "Acme");
+      searchSpy.mockRestore();
     });
 
     it("uses search endpoint for company lookup in add_note", async () => {
-      // Search for company using search endpoint
+      // Spy on searchRecords to return found company
+      const searchSpy = vi
+        .spyOn(searchActionModule, "searchRecords")
+        .mockResolvedValue([{ id: "company-1", name: "Acme Corp" }]);
+
+      // getRecordUrl call
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: () =>
           Promise.resolve({
-            data: [
-              {
-                id: { record_id: "company-1" },
-                object_slug: "companies",
-                record_text: "Acme Corp",
-              },
-            ],
+            data: { web_url: "https://app.attio.com/companies/company-1" },
           }),
       });
       // Create note
@@ -790,12 +782,9 @@ describe("Attio Actions", () => {
         "Note content"
       );
 
-      // First call should be the company search using search endpoint
-      const [url, options] = mockFetch.mock.calls[0];
-      expect(url).toContain("/objects/records/search");
-      const searchBody = JSON.parse(options.body);
-      expect(searchBody.query).toBe("Acme");
-      expect(searchBody.objects).toEqual(["companies"]);
+      // Verify searchRecords was called with expected args
+      expect(searchSpy).toHaveBeenCalledWith("companies", "Acme");
+      searchSpy.mockRestore();
     });
   });
 });
